@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>{{ donnees.vente.facture }}</title>
+<style>
+/* CSS pour une meilleure compatibilité PDF */
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+.header, .client-info, .facture-info, .footer {
+    margin-bottom: 20px;
+}
+/* Amélioration de l'en-tête : alignement simple sans position absolute/float */
+.header img {
+    width: 120px;
+    height: 120px;
+    margin-right: 20px; /* Espace entre le logo et le texte */
+}
+.header .center-content {
+    display: inline-block;
+    vertical-align: top;
+    text-align: center;
+}
+.table-articles {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: center;
+}
+.table-articles th, .table-articles td {
+    border: 1px solid gray;
+    padding: 5px;
+}
+.clearfix::after {
+    content: "";
+    clear: both;
+    display: table;
+}
+@page {
+    size: A4; /* Assurez-vous que le format est défini */
+    margin: 1cm;
+}
+</style>
+</head>
+<body>
+
+<div class="header clearfix" style="text-align: center;">
+    {% if donnees.chemin %}
+        <div style="display: inline-block; vertical-align: top;">
+            <img src="{{ donnees.chemin }}" alt="Logo">
+        </div>
+    {% endif %}
+    <div class="center-content">
+        <h2>{{ donnees.entreprise.nom }}</h2>
+        <p><b>Tél: {{ donnees.entreprise.tel1 }} & WhatsApp: {{ donnees.entreprise.tel2 }}</b></p>
+        <p><b>{{donnees.entreprise.ifu}}</b></p>
+        <p><b>{{donnees.entreprise.autre}}</b></p>
+        <p><b>{{ donnees.entreprise.info }}</b></p>
+        <p><b>{{ donnees.entreprise.ville }} - Secteur N°{{ donnees.entreprise.adresse }}</b></p>
+    </div>
+</div>
+
+<div class="client-info">
+    <div style="display:inline-block; width:48%; vertical-align:top;">
+        <p style="font-weight:bold; text-decoration:underline;">Information du client</p>
+        {% if donnees.vente %}
+            <p><strong>Nom:</strong> {{ donnees.vente.nom }}</p>
+            <p><strong>Ville: </strong>{{ donnees.vente.ville }} / Adresse: {{ donnees.vente.Adrresse }}</p>
+            <p> <strong>Tel: </strong>{{ donnees.vente.Contact }}</p>
+        {% endif %}
+    </div>
+    <div style="display:inline-block; width:48%; vertical-align:top;">
+        <p style="font-weight:bold; text-decoration:underline;">{{ msg }}</p>
+        <p><strong>Date d'Émission:</strong> {{ donnees.vente.date }}</p> 
+        <p><strong>Numéro:</strong> {{ donnees.vente.facture }}</p>
+    </div>
+</div>
+
+<table class="table-articles">
+    <tr>
+        <th>N°ordre</th>
+        <th style="text-align: left;">Désignation</th>
+        <th>Quantité</th>
+        <th>Prix Unitaire</th>
+        <th>Montant</th>
+    </tr>
+    {% for ligne in donnees.liste_article %}
+    <tr>
+        <td>{{ loop.index }}</td>
+        <td style="text-align: left;">{{ ligne[0] }}</td>
+        <td>{{ ligne[1] }}</td>
+        <td>{{ ligne[2] }}</td>
+        <td>{{ ligne[3] }}</td>
+    </tr>
+    {% endfor %}
+    <tr>
+        <td colspan="4" align="right"><strong>Montant HT</strong></td>
+        <td>{{ donnees.ht }}</td>
+    </tr>
+    <tr>
+        <td colspan="4" align="right"><strong>TVA</strong></td>
+        <td>{{ donnees.vente.tva }}%</td>
+    </tr>
+    <tr>
+        <td colspan="4" align="right"><strong>Montant TTC</strong></td>
+        <td>{{ donnees.ttc }}</td>
+    </tr>
+    <tr>
+        <td colspan="4" align="right"><strong>Net à Payer</strong></td>
+        <td>{{ donnees.net }}</td>
+    </tr>
+</table>
+
+{% if donnees.vente.type_facture == "Facture" %}
+<div class="facture-info" style="margin-top: 20px;">
+    <div style="display: inline-block;width: 48%;vertical-align: top;">
+        {% if donnees.vente.reste < 0 %}
+            <p><strong>Montant versé:</strong> {{ donnees.vente.mont_verse }} F CFA</p>
+            <p><strong>Monnaie rendue:</strong> {{ donnees.vente.reste | abs }} F CFA</p>
+        {% else %}
+            <p><strong>Montant versé:</strong> {{ donnees.vente.mont_verse }} F CFA</p>
+            <p><strong>Montant restant:</strong> {{ donnees.vente.reste }} F CFA</p>
+        {% endif %}
+    </div>
+{% elif donnees.vente.type_facture == "Devis" %}
+    <div class="facture-info" style="margin-top: 20px;">
+        <div style="display: inline-block;width: 48%;vertical-align: top;">
+            <p><strong>Montant estimé:</strong> {{donnees.net }} F CFA</p>
+        </div>
+    </div>
+{% elif donnees.vente.type_facture == "Commande" %}
+    <div class="facture-info" style="margin-top: 20px;">
+        <div style="display: inline-block;width: 48%;vertical-align: top;">
+            <p><strong>Montant total:</strong> {{ donnees.net }} F CFA</p>
+        </div>
+    </div>
+{% elif donnees.vente.type_facture == "Bon de livraison" %}
+    <div class="facture-info" style="margin-top: 20px;">
+        <div style="display: inline-block;width: 48%;vertical-align: top;">
+            <p><strong>Montant total:</strong> {{ donnees.net }} F CFA</p>
+        </div>
+    </div>
+{% endif %}
+</div>
+{% if donnees.remarque %}
+<p><strong>Remarques :</strong></p>
+<ul>
+    {% for rem in donnees.remarque %}
+        <li>{{ rem }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<div class="footer">
+        <p style="text-align: right;">Fait à {{ donnees.entreprise.ville }}, le {{ donnees.vente.date }}</p>
+    
+        <div style="text-align: right; margin-top: 50px;">
+        <p style="text-decoration: underline; font-size: large; margin-bottom: 70px;">Le Responsable</p>
+        <p><strong>{{ donnees.entreprise.resp }}</strong></p>
+    </div>
+</div>
+
+</body>
+</html>

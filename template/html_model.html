@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta content="text/html; charset=UTF-8" http-equiv="content-type">
+<title>{{donnees.message}}</title>
+<style>
+    body { 
+        font-family: 'Arial', sans-serif;
+        margin: 10px; /* Ajoute une marge autour du document */
+        font-size: 12px; 
+    }
+    #header { 
+        text-align: center; 
+        margin-bottom: 20px; 
+    }
+    #header h2, #header p { 
+        margin: 5px 0; /* Espacement plus compact pour les informations de l'entreprise */
+    }
+    
+    /* Styles pour la table */
+    table { 
+        width: 100%; /* Définit la largeur du tableau à 100% du conteneur */
+        font-size: 12px; 
+        border-collapse: collapse; 
+        margin-top: 20px; 
+    }
+    th, td { 
+        border: 1px solid black; 
+        padding: 10px; /* Augmente le padding pour plus d'espace */
+        text-align: left; 
+    }
+    th { 
+        background-color: #f0f0f0; 
+        font-weight: bold;
+        text-align: left;
+    }
+
+    h2 { 
+        text-align: center; 
+        color: #333; 
+        border-bottom: 2px solid #ddd;
+        padding-bottom: 5px;
+        font-size: 14pt;
+    }
+    @media print {
+    thead {
+        display: table-row-group !important;
+    }
+    body{
+        -webkit-print-color-adjust:exact;
+        print-color-adjust: exact;
+    }
+     }
+    
+    
+</style>
+</head>
+<body>
+<div id="header">
+    <h2>{{ donnees.entreprise.nom }}</h2>
+    <p><b>Tél: {{ donnees.entreprise.tel1 }} & WhatsApp: {{ donnees.entreprise.tel2 }}</b></p>
+    <p><b>{{donnees.entreprise.ifu}}</b></p>
+    <p><b>{{donnees.entreprise.autre}}</b></p>
+    <p><b>{{ donnees.entreprise.info }}</b></p>
+    <p><b>{{ donnees.entreprise.ville }} - Secteur N°{{ donnees.entreprise.adresse }}</b></p>
+</div>
+
+<h2>{{ donnees.message }}</h2>
+
+<table>
+    <thead>
+        <tr>
+            {% for entete in donnees.entetes_tableau %}
+            <th>{{ entete }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for ligne in donnees.donnees_tableau %}
+        <tr>
+            {% for cellule in ligne %}
+            <td>{{ cellule }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+</body>
+</html>

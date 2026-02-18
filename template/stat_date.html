@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta content="text/html; charset=UTF-8" http-equiv="content-type">
+<title>Statistique</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 12pt;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+    th, td {
+        border: 1px solid black;
+        padding: 6px;
+    }
+    th {
+        background-color: #f0f0f0;
+    }
+    h2 {
+        text-align: center;
+    }
+     @media print {
+    thead {
+        display: table-row-group !important;
+    }
+    body{
+        -webkit-print-color-adjust:exact;
+        print-color-adjust: exact;
+    }
+     }
+</style>
+</head>
+<body>
+
+<div id="header" style="text-align:center;">
+    <h2>{{ donnees.entreprise.nom }}</h2>
+    <p><b>Tél: {{ donnees.entreprise.tel1 }} & WhatsApp: {{ donnees.entreprise.tel2 }}</b></p>
+    <p><b>{{donnees.entreprise.ifu}}</b></p>
+    <p><b>{{donnees.entreprise.autre}}</b></p>
+    <p><b>{{ donnees.entreprise.info }}</b></p>
+    <p><b>{{ donnees.entreprise.ville }} - Secteur N°{{ donnees.entreprise.adresse }}</b></p>
+</div>
+
+<h2>{{ donnees.message }}</h2>
+
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Produit</th>
+            <th>Quantité</th>
+            <th>Prix unitaire</th>
+            <th>Montant</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for client in donnees.clients %}
+        {% set rowspan = client.produits|length %}
+        {% for ligne in client.produits %}
+        <tr>
+            {% if loop.first %}
+                <td rowspan="{{ rowspan }}">{{ client.client }}</td>
+            {% endif %}
+            <td>{{ ligne.produit }}</td>
+            <td align="center">{{ "%.2f"|format(ligne.quantite) }}</td>
+            <td align="right">{{ "%.2f"|format(ligne.prix) }}</td>
+            <td align="right">{{ "%.2f"|format(ligne.montant) }}</td>
+        </tr>
+        {% endfor %}
+        <tr style="background-color:#e0e0e0;">
+            <td colspan="4"><b>Sous-total</b></td>
+            <td align="right"><b>{{ "%.2f"|format(client.sous_total) }}</b></td>
+        </tr>
+    {% endfor %}
+    <tr style="background-color:#d0d0d0;">
+        <td colspan="4"><b>Total général</b></td>
+        <td align="right"><b>{{ "%.2f"|format(donnees.total_general) }}</b></td>
+    </tr>
+    </tbody>
+</table>
+
+</body>
+</html>

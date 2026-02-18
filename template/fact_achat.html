@@ -1,0 +1,75 @@
+
+ <!DOCTYPE html>
+<html>
+    <head>
+    <meta charset="UTF-8">
+    <title>{{ donnees.achat.facture }}</title>
+    <style>
+        body {font-family: Arial, sans-serif;    margin: 20px;}
+        .header, .client-info, .facture-info, .footer {margin-bottom: 20px;}
+        .header img {float: left;width: 120px;height: 120px;margin-right: 20px;}
+        .header div {display: inline-block;vertical-align: top;}
+        .table-articles {width: 100%;border-collapse: collapse;text-align: center;}
+        .table-articles th, .table-articles td {border: 1px solid gray;padding: 5px;}
+        .clearfix::after {content: "";clear: both; display: table;}
+        @media print {thead {display: table-row-group !important;}
+        body{ -webkit-print-color-adjust:exact; print-color-adjust: exact;}}
+        .message-section {font-size:20px; }
+        
+    </style>
+    <body>
+        <div class="message-section">
+            <h1 style="text-align: center;"> {{donnees.achat.type | upper}}</h1>
+        </div>
+        <!-- Infos client et facture -->
+        <div class="client-info">
+            <div style="display:inline-block; width:48%; vertical-align:top;">
+                <p style="font-weight:bold; text-decoration:underline;">Fournisseur</p>
+                {% if donnees.achat %}
+                    <p><strong>Nom:</strong> {{ donnees.achat.Nom }}</p>
+                    <p><strong>Ville: </strong>{{ donnees.achat.ville }} / Adresse: {{ donnees.achat.Adrresse }}</p>
+                    <p> <strong>Tel: </strong>{{ donnees.achat.Contact }}</p>
+                {% endif %}
+            </div>
+            <div style="display:inline-block; width:48%; vertical-align:top;">
+                <p style="font-weight:bold; text-decoration:underline;">{{ msg }}</p>
+                <p><strong>Date:</strong> {{ donnees.achat.date }}</p>
+                <p><strong>Numéro:</strong> {{ donnees.achat.facture }}</p>
+            </div>
+        </div>
+            <!-- Tableau des articles -->
+        <table class="table-articles">
+            <tr>
+                <th>N°ordre</th>
+                <th style="text-align: left;">Désignation</th>
+                <th>Quantité</th>
+                <th>Prix Unitaire</th>
+                <th>Montant</th>
+            </tr>
+            {% for ligne in donnees.liste_article %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td   style="text-align: left;">{{ ligne[0] }}</td>
+                <td>{{ ligne[1] }}</td>
+                <td>{{ ligne[2] }}</td>
+                <td>{{ ligne[3] }}</td>
+            </tr>
+            {% endfor %}
+            <tr>
+                <td colspan="4" align="right"><strong>Montant HT</strong></td>
+                <td>{{ donnees.ht }}</td>
+            </tr>
+            
+            <tr>
+                <td colspan="4" align="right"><strong>Montant TTC</strong></td>
+                <td>{{ donnees.ttc }}</td>
+            </tr>
+            <tr>
+                <td colspan="4" align="right"><strong>Net à Payer</strong></td>
+                <td>{{ donnees.net }}</td>
+            </tr>
+        </table>
+           
+        <p>Arrêté la présente {{ donnees.achat.type | lower }} au montant de: <strong>{{ donnees.lettre }}</strong> franc CFA.</p>
+    </body>
+</html>
