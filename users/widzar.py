@@ -9,7 +9,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QDate
 from PySide6.QtGui import QIcon
-
+from users.permission_editor import PermissionEditor
+from users.role_manager import RoleManager
 
 from fonction.methode import cal
 from fonction.model import hash_password
@@ -29,6 +30,17 @@ class SetupWizardTabs(QDialog):
         
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabBar::tab {
+                padding: 8px 15px;
+                font-weight: bold;
+            }
+            QTabBar::tab:selected {
+                background: #2c3e50;
+                color: white;
+            }
+        """)
+
         layout.addWidget(self.tabs)
 
         # === Onglets ===
@@ -41,6 +53,12 @@ class SetupWizardTabs(QDialog):
         self._init_onglet_exercice()
 
         self.tab_users = QWidget()
+        self.tab_users.setStyleSheet("""
+            QTabBar::tab {
+                padding: 6px 12px;
+            }
+        """)
+
         self.tabs.addTab(self.tab_users, "Utilisateurs")
         self._init_onglet_users()
 
@@ -350,32 +368,58 @@ class SetupWizardTabs(QDialog):
         
     # === Onglet Utilisateurs ===
     def _init_onglet_users(self):
+
         layout = QVBoxLayout(self.tab_users)
-        box_h = QHBoxLayout()
+
+        # Sous-onglets internes
+        self.user_tabs = QTabWidget()
+        layout.addWidget(self.user_tabs)
+
+        # ===== Onglet 1 : Gestion Utilisateurs =====
+        self.tab_user_list = QWidget()
+        self.user_tabs.addTab(self.tab_user_list, "Utilisateurs")
+
+        user_layout = QVBoxLayout(self.tab_user_list)
+        box_h = QHBoxLayout() 
         self.user_name = QLineEdit()
-        self.user_pass = QLineEdit()
-        
-        self.user_email = QLineEdit()
+        self.user_pass = QLineEdit()           
+        self.user_email = QLineEdit() 
         self.user_email.setPlaceholderText("Email utilisateur")
         self.user_name.setPlaceholderText("Nom utilisateur")
         self.user_pass.setEchoMode(QLineEdit.EchoMode.Password)
         self.role = QComboBox()
-        self.role.addItems(["Admin","Commercial","Caissier"])
-
+        self.role.addItems(self.get_roles())
         form = QFormLayout()
         form.addRow("Nom utilisateur:", self.user_name)
         form.addRow("Mot de passe:", self.user_pass)
         form.addRow("Email utilisateur:", self.user_email)
         form.addRow("Rôle:",self.role)
-        self.btn_add_user = QPushButton("Ajouter")
+        self.btn_add_user = QPushButton("Ajouter utilisateur")
         self.btn_add_user.clicked.connect(self.add_user)
         box_h.addWidget(self.btn_add_user)
         self.table_users = QTableWidget(0, 3)
         self.table_users.setHorizontalHeaderLabels(["Utilisateur", "Mot de passe", "Email"])
-        layout.addLayout(form)
-        layout.addWidget(self.btn_add_user)
-        layout.addWidget(self.table_users)
+        user_layout.addLayout(form)
+        user_layout.addWidget(self.btn_add_user)
+        user_layout.addWidget(self.table_users)
+        
+        # ===== Onglet 2 : Gestion des Rôles =====
+        self.tab_roles = RoleManager(self.db_path)
+        self.user_tabs.addTab(self.tab_roles, "Rôles")
 
+        # ===== Onglet 3 : Permissions =====
+        self.tab_permissions = PermissionEditor(self.db_path)
+        self.user_tabs.addTab(self.tab_permissions, "Permissions")
+
+    def get_roles(self):
+        conn = self.cal.connect_to_db(self.db_path)
+        if conn is None:
+            return []
+        cur = conn.cursor()
+        cur.execute("SELECT name FROM roles")
+        roles = [row[0] for row in cur.fetchall()]
+        conn.close()
+        return roles
     def add_user(self):
 
         name = self.user_name.text().strip()
