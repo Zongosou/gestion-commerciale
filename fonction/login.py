@@ -19,7 +19,7 @@ import os
 import sqlite3 as sq
 from PySide6.QtWidgets import (QMessageBox, QDialog)
 from interface.acceuil_ui import Ui_acceuil
-from fonction.widzar import ResetPasswordDialog
+from users.widzar import ResetPasswordDialog
 class login(QDialog):
     # Define a signal that will be emitted when login is successful.
     # It passes the username as a string.

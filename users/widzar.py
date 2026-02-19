@@ -367,7 +367,7 @@ class SetupWizardTabs(QDialog):
         form.addRow("Mot de passe:", self.user_pass)
         form.addRow("Email utilisateur:", self.user_email)
         form.addRow("Rôle:",self.role)
-        self.btn_add_user = QPushButton("☺️Ajouter utilisateur")
+        self.btn_add_user = QPushButton("Ajouter")
         self.btn_add_user.clicked.connect(self.add_user)
         box_h.addWidget(self.btn_add_user)
         self.table_users = QTableWidget(0, 3)
@@ -377,21 +377,56 @@ class SetupWizardTabs(QDialog):
         layout.addWidget(self.table_users)
 
     def add_user(self):
+
         name = self.user_name.text().strip()
         pwd = self.user_pass.text().strip()
-       
+        email = self.user_email.text().strip()
+        role_name = self.role.currentText()
+
         if not name or not pwd:
             QMessageBox.warning(self, "Erreur", "Nom ou mot de passe vide")
             return
-        row = self.table_users.rowCount()
-        self.table_users.insertRow(row)
-        self.table_users.setItem(row, 0, QTableWidgetItem(name))
-        self.table_users.setItem(row, 1, QTableWidgetItem(pwd))
-        self.table_users.setItem(row, 2, QTableWidgetItem(self.user_email.text().strip()))
-        
+
+        if not self.verifie_mot(pwd):
+            QMessageBox.warning(self, "Sécurité",
+                                "Mot de passe faible.\nMinimum 4 caractères + majuscule + minuscule + chiffre + symbole.")
+            return
+
+        conn = self.cal.connect_to_db(self.db_path)
+        cur = conn.cursor()
+
+        # récupérer role_id
+        cur.execute("SELECT id FROM roles WHERE name=?", (role_name,))
+        role = cur.fetchone()
+
+        if not role:
+            QMessageBox.warning(self, "Erreur", "Rôle introuvable")
+            return
+
+        role_id = role[0]
+        recovery_code = self.generate_recovery_code()
+        mot_hash = hash_password(pwd)
+
+        cur.execute("""
+            INSERT INTO users (username, password, email, role_id, recovery_code)
+            VALUES (?, ?, ?, ?, ?)
+        """, (name, mot_hash, email, role_id, recovery_code))
+
+        conn.commit()
+        conn.close()
+
+        QMessageBox.information(
+            self,
+            "Utilisateur créé",
+            f"Utilisateur {name} créé.\nCode de secours : {recovery_code}"
+        )
+
         self.user_name.clear()
         self.user_pass.clear()
         self.user_email.clear()
+
+        self.load_users()
+
         
     def verifie_mot(self,mot):
         if len(mot) < 4:

@@ -8,7 +8,7 @@ QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtGui import QIcon
 from caisse.TresorerieDash import SuiviTresorerie
 from fonction.methode import cal
-from fonction.widzar import SetupWizardTabs
+from users.widzar import SetupWizardTabs
 from piece.piece_liste_patched import ListePiece
 from stock.gest_stock import StockApp
 from fonction.tiers import TiersWidget
