@@ -36,7 +36,7 @@ class ListePiece(QWidget):
     # =====================================================
     # INIT
     # =====================================================
-    def __init__(self, dbfolder: str, user="Admin"):
+    def __init__(self, dbfolder: str, user=None):
         super().__init__()
         self.dbfolder = dbfolder
         self.user = user

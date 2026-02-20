@@ -14,9 +14,10 @@ from piece.compl import get_pdf_directory
 from stock.gest_stock import SummaryCard
 
 class SuiviTresorerie(QWidget):
-    def __init__(self, db_path):
+    def __init__(self, db_path,user=None):
         super().__init__()
         self.db_path = db_path
+        self.user = user
         self.manager = RapportManager(db_path)
         self.setWindowIcon(QIcon(':/icon/chariot-de-chariot.png'))
         self.setWindowTitle("Suivi de Trésorerie")
@@ -218,7 +219,7 @@ class SuiviTresorerie(QWidget):
    
    
     def add_operation(self):
-        self.op = NewTresorerieOp(self.db_path)
+        self.op = NewTresorerieOp(self.db_path,self.user)
         self.op.exec()   
 
     def _tab_tresorerie(self):

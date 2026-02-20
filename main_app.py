@@ -1,5 +1,7 @@
+import sys
+
 from PySide6.QtWidgets import (
-QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+QApplication, QDialog, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFrame, QStyle, QStyleFactory,
     QListWidget, QListWidgetItem, QSizePolicy, QSpacerItem,
     QStackedWidget,QMenuBar,QMenu
@@ -8,6 +10,7 @@ QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtGui import QIcon
 from caisse.TresorerieDash import SuiviTresorerie
 from fonction.methode import cal
+from users.login_window import LoginWindow
 from users.widzar import SetupWizardTabs
 from piece.piece_liste_patched import ListePiece
 from stock.gest_stock import StockApp
@@ -15,6 +18,7 @@ from fonction.tiers import TiersWidget
 from caisse.dashbord import Dashboard as RapportWindow
 from  caisse.TresorerieDash import RapportManager
 from interface.icon_rc import *
+from core.services.auth_service import logout
 import os
 # ---------------------------
 # fonction principale 
@@ -22,9 +26,9 @@ import os
 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'data/stock.db'))
 db_logo = os.path.abspath(os.path.join(os.path.dirname(__file__), 'data'))
 class StockWindow(QMainWindow):
-    def __init__(self,user='Admin'):
+    def __init__(self,user=None):
         super().__init__()
-        self.setWindowTitle("GsCom - Gestion Commerciale")
+        self.setWindowTitle(f"GsCom - Gestion Commerciale - {user}")
         self.setWindowIcon(QIcon(":/icon/icone.png"))
         # Taille adaptée : par exemple 80% de l'écran
         screen = QApplication.primaryScreen()
@@ -68,9 +72,9 @@ class StockWindow(QMainWindow):
         # Main content
         self.app_stoct = StockApp(db_connection=db_path,user=self.user)
         self.app_content.addWidget(self.app_stoct)  
-        self.app_pices  = ListePiece(db_path)
+        self.app_pices  = ListePiece(db_path,user=self.user)
         self.app_content.addWidget(self.app_pices)
-        self.app_caisse = SuiviTresorerie(db_path)
+        self.app_caisse = SuiviTresorerie(db_path,user=self.user)
         self.app_content.addWidget(self.app_caisse)
         self.manager = RapportManager(db_path)
         facture, ventes = self.manager.load_data_from_sqlite()
@@ -83,6 +87,7 @@ class StockWindow(QMainWindow):
         if sidebar_widget is None:
             return
         sidebar_widget.currentRowChanged.connect(self.app_content.setCurrentIndex)
+        self.statusBar().showMessage(f"Connecté en tant que : {self.user}")
     # ---------------------------
     # UI Builders
     # ---------------------------
@@ -135,6 +140,7 @@ class StockWindow(QMainWindow):
     def open_clients_dialog(self):
         dialog = TiersWidget(dbfolder=db_path, mode='Client')
         dialog.exec()
+
     def open_fournisseurs_dialog(self):
         dialog = TiersWidget(dbfolder=db_path, mode='Fournisseur')
         dialog.exec()
@@ -145,9 +151,25 @@ class StockWindow(QMainWindow):
         with open("config/style.qss", "r", encoding="utf-8") as f:
             style = f.read()
             self.setStyleSheet(style)
+    
+    def closeEvent(self, event):
 
-if __name__ == "__main__":
-    app = QApplication([])
-    win = StockWindow()
-    win.show()
-    app.exec()
+        logout(self.user, db_path)
+        event.accept()
+
+app = QApplication(sys.argv)
+login = LoginWindow(db_path)
+
+if login.exec() == QDialog.Accepted:
+    user_id = login.user_id
+    username = login.user
+    print(username)
+    main_win = StockWindow(username)
+    main_win.show()
+    sys.exit(app.exec())
+
+# if __name__ == "__main__":
+#     app = QApplication(sys.argv)
+#     win = StockWindow()
+#     win.show()
+#     app.exec()

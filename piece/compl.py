@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QDialog, QMessageBox, QPushButton, QVBoxLayout,
                              QTableWidget,QComboBox, QTableWidgetItem,QHBoxLayout,QCheckBox,QWidget,QInputDialog,QAbstractItemView)
 import sqlite3 as sq
 from PySide6.QtCore import Qt
-from datetime import date
+from datetime import date, datetime
 from fonction.methode import Numeroteur, cal
 from vente.ventDB import DataManage
 from vente.application.valider_piece import ValiderPieceUseCase
@@ -197,7 +197,7 @@ class DialogueConversion(QDialog):
                 cur.execute("""
                     SELECT factu, client, datee, montant
                     FROM infov
-                    WHERE type_fact = ? AND statut = 'Validé'
+                    WHERE type_fact = ? AND statut_piece = 'Validé'
                 """, (type_piece,))
                 resultats = cur.fetchall()
 
@@ -216,6 +216,8 @@ class DialogueConversion(QDialog):
 
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur de chargement des pièces : {e}")
+    
+    # Vérification de doublon avant conversion
     def piece_deja_convertie(self, factu_origine, type_cible):
         with sq.connect(self.db_path) as conn:
             cur = conn.cursor()
@@ -226,6 +228,7 @@ class DialogueConversion(QDialog):
             return cur.fetchone()[0] > 0
 
     def convertir_piece(self):
+
         selected = None
         for row in range(self.table.rowCount()):
             widget = self.table.cellWidget(row, 0)
@@ -238,7 +241,7 @@ class DialogueConversion(QDialog):
             return
 
         self.table.selectRow(selected)
-        add_ =self.add_ajt()
+        add_ = self.add_ajt()
         if add_ is None:
             return
 
@@ -247,74 +250,128 @@ class DialogueConversion(QDialog):
             return
 
         type_origine = self.combo_type.currentText()
-        factu_origine = res[0]
+        factu_origine = res[1]
 
         type_cible, ok = QInputDialog.getItem(
             self, "Conversion", "Convertir en :", cb_, editable=False
         )
+
         if not ok or not type_cible:
             return
-        if type_cible == "Facture":
-            nouveau_numero = self.numeroteur.generer("FAC")
-        elif type_cible == "Bon de livraison":
-            nouveau_numero = self.numeroteur.generer("BL")
-        elif type_cible == "Commande":
-            nouveau_numero = self.numeroteur.generer("CMD")
-        elif type_cible == "Devis":
-            nouveau_numero = self.numeroteur.generer("DV")
-        else:
+
+        # 🔒 Vérification AVANT TOUT
+        if self.piece_deja_convertie(factu_origine, type_cible):
+            QMessageBox.warning(
+                self,
+                "Conversion impossible",
+                f"La pièce {factu_origine} a déjà été convertie en {type_cible}."
+            )
+            return
+
+        # Génération numéro
+        mapping = {
+            "Facture": "FAC",
+            "Bon de livraison": "BL",
+            "Commande": "CMD",
+            "Devis": "DV"
+        }
+
+        if type_cible not in mapping:
             QMessageBox.warning(self, "Erreur", "Type de pièce inconnu")
             return
+
+        nouveau_numero = self.numeroteur.generer(mapping[type_cible])
 
         try:
             with sq.connect(self.db_path) as conn:
                 cur = conn.cursor()
 
+                # ===== Création pièce cible =====
                 cur.execute("""
-                    INSERT INTO infov (factu, client, montant, mnt_ttc, payer, monn, datee, statut, type_fact,origine,utilisateur)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    nouveau_numero, res[2], res[3], res[4], 0.0, 0.0, res[8],
-                    "En cours", type_cible,res[1],self.user
-                ))
-                if type_cible == "Facture":
-                    for article in resultat:
-                        code, libelle, quantite, prix, montant = article
-                        cur.execute("""
-                            INSERT INTO vent (client,code,facture, libelle, prix,quantite,montant,datee,id_clt)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            client, code, nouveau_numero, libelle, prix, quantite, montant, res[8], res[1]
-                        ))
-                        cur.execute("UPDATE infov SET statut = 'Impayé',monn=? WHERE factu = ?", (res[4],nouveau_numero,))
-                else:
-                    for article in resultat:
-                        code, libelle, quantite, prix, montant = article
-                        cur.execute("""
-                            INSERT INTO liste (client, code, facture, libelle, prix, quantite, montant, datee, id_clt)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            client, code, nouveau_numero, libelle, prix, quantite, montant, res[8], res[2]
-                        ))
-                cur.execute("UPDATE infov SET statut = 'Traité' WHERE factu = ?", (res[1],))
-                # 🔒 blocage si déjà converti
-                if self.piece_deja_convertie(factu_origine, type_cible):
-                    QMessageBox.warning(
-                        self,
-                        "Conversion impossible",
-                        f"La pièce {factu_origine} a déjà été convertie en {type_cible}."
+                    INSERT INTO infov (
+                        factu, client, montant, mnt_ttc,
+                        payer, monn, datee, statut_piece,statut_paiement,
+                        type_fact, origine, utilisateur, date_validation
                     )
-                    conn.rollback()
-                    return
-                else:
-                    conn.commit()
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+                """, (
+                    nouveau_numero,
+                    res[2],
+                    res[3],
+                    res[4],
+                    0.0,
+                    0.0,
+                    res[7],
+                    "En cours",
+                    "N/A",
+                    type_cible,
+                    factu_origine,
+                    self.user,
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                ))
 
-            QMessageBox.information(self, "Succès", f"{type_origine} {factu_origine} converti en {type_cible} ({nouveau_numero})")
+                # ===== Insertion lignes =====
+                for article in resultat:
+                    code, libelle, quantite, prix, montant = article
+
+                    if type_cible == "Facture":
+                        cur.execute("""
+                            INSERT INTO vent (
+                                client, code, facture,
+                                libelle, prix, quantite,
+                                montant, datee, id_clt
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            client, code, nouveau_numero,
+                            libelle, prix, quantite,
+                            montant, res[8], res[1]
+                        ))
+
+                    else:
+                        cur.execute("""
+                            INSERT INTO liste (
+                                client, code, facture,
+                                libelle, prix, quantite,
+                                montant, datee, id_clt
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            client, code, nouveau_numero,
+                            libelle, prix, quantite,
+                            montant, res[8], res[2]
+                        ))
+
+                # ===== Mise à jour pièce origine =====
+                cur.execute("""
+                    UPDATE infov
+                    SET statut_piece='Traité'
+                    WHERE factu=?
+                """, (factu_origine,))
+
+                # ===== Statut paiement si facture =====
+                if type_cible == "Facture":
+                    cur.execute("""
+                        UPDATE infov
+                        SET statut_paiement='Impayé'
+                        WHERE factu=?
+                    """, (nouveau_numero,))
+
+                conn.commit()
+
+            QMessageBox.information(
+                self,
+                "Succès",
+                f"{type_origine} {factu_origine} converti en {type_cible} ({nouveau_numero})"
+            )
+
             self.charger_pieces()
 
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors du transfert : {e}")
-
+    
+    # Optionnel : ouvrir la pièce créée
+    # self.open_piece(type_cible, nouveau_numero)
     def add_ajt(self):
         conn = cal.connect_to_db(self.db_path)
         if conn is None:
@@ -341,8 +398,9 @@ class DialogueConversion(QDialog):
                 QMessageBox.warning(self, "Transfert", "Pièce introuvable.")
                 return [], [], "",[]
 
-            if res[7] != "Validé":
-                QMessageBox.warning(self, "Conversion refusée", f"La pièce sélectionnée n’est pas validée. Statut actuel : {res[7]}")
+            status = str(res[10]).upper()
+            if status not in ["VALIDÉ", "VALIDÉE"]:
+                QMessageBox.warning(self, "Conversion refusée", f"La pièce sélectionnée n'est pas validée. Statut actuel : {res[10]}")
                 return [], [], "",[]
             cb_ = []
             resultat = []

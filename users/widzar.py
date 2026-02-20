@@ -376,32 +376,10 @@ class SetupWizardTabs(QDialog):
         layout.addWidget(self.user_tabs)
 
         # ===== Onglet 1 : Gestion Utilisateurs =====
-        self.tab_user_list = QWidget()
-        self.user_tabs.addTab(self.tab_user_list, "Utilisateurs")
+        from users.UserManager import UserManager
 
-        user_layout = QVBoxLayout(self.tab_user_list)
-        box_h = QHBoxLayout() 
-        self.user_name = QLineEdit()
-        self.user_pass = QLineEdit()           
-        self.user_email = QLineEdit() 
-        self.user_email.setPlaceholderText("Email utilisateur")
-        self.user_name.setPlaceholderText("Nom utilisateur")
-        self.user_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        self.role = QComboBox()
-        self.role.addItems(self.get_roles())
-        form = QFormLayout()
-        form.addRow("Nom utilisateur:", self.user_name)
-        form.addRow("Mot de passe:", self.user_pass)
-        form.addRow("Email utilisateur:", self.user_email)
-        form.addRow("Rôle:",self.role)
-        self.btn_add_user = QPushButton("Ajouter utilisateur")
-        self.btn_add_user.clicked.connect(self.add_user)
-        box_h.addWidget(self.btn_add_user)
-        self.table_users = QTableWidget(0, 3)
-        self.table_users.setHorizontalHeaderLabels(["Utilisateur", "Mot de passe", "Email"])
-        user_layout.addLayout(form)
-        user_layout.addWidget(self.btn_add_user)
-        user_layout.addWidget(self.table_users)
+        self.tab_user_list = UserManager(self.db_path)
+        self.user_tabs.addTab(self.tab_user_list, "Utilisateurs")
         
         # ===== Onglet 2 : Gestion des Rôles =====
         self.tab_roles = RoleManager(self.db_path)
