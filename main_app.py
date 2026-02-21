@@ -24,7 +24,10 @@ import os
 # fonction principale 
 # ---------------------------
 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'data/stock.db'))
-db_logo = os.path.abspath(os.path.join(os.path.dirname(__file__), 'data'))
+conn = cal().connect_to_db(db_path)
+cur = conn.cursor()
+db_logo = cal().get_logo_path(cur)
+print(db_logo)
 class StockWindow(QMainWindow):
     def __init__(self,user=None):
         super().__init__()
@@ -158,7 +161,8 @@ class StockWindow(QMainWindow):
         event.accept()
 
 app = QApplication(sys.argv)
-login = LoginWindow(db_path)
+
+login = LoginWindow(db_path,db_logo)
 
 if login.exec() == QDialog.Accepted:
     user_id = login.user_id

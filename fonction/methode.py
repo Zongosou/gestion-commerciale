@@ -242,7 +242,7 @@ class cal:
     
     def get_logo_path(self,cur):
         
-        cur.execute("SELECT valeur FROM dossier WHERE cle='LOGO_PATH'")
+        cur.execute("SELECT valeur FROM dossier WHERE cle='logo_path'")
         row = cur.fetchone()
 
         if row and os.path.exists(row[0]):
