@@ -3,11 +3,12 @@
 
 import os
 import datetime
+from openpyxl import Workbook
 import pandas as pd
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtCore import QSize, Qt, QDate
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
+    QFileDialog, QTableView, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel,
     QComboBox, QDateEdit, QTableWidget,
     QTableWidgetItem,QToolBar,
@@ -26,6 +27,8 @@ from piece.avoir_dialog import AvoirDialog
 from stock.gest_stock import SummaryCard
 import logging
 
+from vente.models.piece_model import PieceTableModel
+
 # ---------------- LOGGING ----------------
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -40,14 +43,16 @@ class ListePiece(QWidget):
         super().__init__()
         self.dbfolder = dbfolder
         self.user = user
-
         self.setWindowIcon(QIcon(":/icon/icone.png"))
 
         self.cal = cal()
         self.Model = Model()
         self.manager = RapportManager(self.dbfolder)
         self.serviceAvoir = AvoirService(self.dbfolder, self.user)
-
+        self.current_sort_column = "datee"
+        self.current_sort_order = "DESC"
+        self.page_size = 50
+        self.current_page = 0
         self.cols = [
             "N°Facture", "ID Client", "Mnt HT", "Mnt TTC",
             "Mnt versé", "Mnt restant", "Statut pièce","Etat paiement",
@@ -64,6 +69,7 @@ class ListePiece(QWidget):
         self.full_rows = []
         self.cached_data = []
         self.create_actions()
+        self.create_toolbar()
         self.ini()
         self._update_summary_cards(
             total_products=self.manager.ca_total(),
@@ -88,10 +94,12 @@ class ListePiece(QWidget):
     # =====================================================
     def ini(self):
         layout = QVBoxLayout(self)
+        layout.addWidget(self.top_toolbar)
+        layout.addWidget(self.ribbon_toolbar)
         
-        self.toolbar = self.create_toolbar()
-        layout.setSpacing(2)
-        layout.addWidget(self.toolbar)
+        # self.toolbar = self.create_toolbar()
+        # layout.setSpacing(2)
+        # layout.addWidget(self.toolbar)
         # ================= CARTES =================
         cards_row = QHBoxLayout()
 
@@ -104,41 +112,23 @@ class ListePiece(QWidget):
             cards_row.addWidget(card, 1)
 
         layout.addLayout(cards_row)
-        # ---------- FILTRES ----------
-        filtres = QHBoxLayout()
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Recherche facture, client, statut")
-
-        self.liste_pice = QComboBox()
-        self.liste_pice.addItems(["Pièce", "Devis", "Commande","Bon de livraison", "Facture"])
-
-        self.date_debut = QDateEdit(QDate.currentDate())
-        self.date_fin = QDateEdit(QDate.currentDate())
-        for d in (self.date_debut, self.date_fin):
-            d.setCalendarPopup(True)
-            d.setDisplayFormat("yyyy-MM-dd")
-
-        self.liste_clt_combo = QComboBox()
-
-        filtres.addWidget(self.search)
-        filtres.addWidget(self.liste_pice)
-        filtres.addWidget(QLabel("Du"))
-        filtres.addWidget(self.date_debut)
-        filtres.addWidget(QLabel("Au"))
-        filtres.addWidget(self.date_fin)
-        filtres.addWidget(QLabel("Client"))
-        filtres.addWidget(self.liste_clt_combo)
-
-        layout.addLayout(filtres)
-
         # ---------- TABLE ----------
-        self.table = QTableWidget()
-        
-        self.table.setColumnCount(len(self.cols))
-        self.table.setHorizontalHeaderLabels(self.cols)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.table = QTableView()
+        self.model = PieceTableModel([])
+        self.table.setModel(self.model)
+        self.table.doubleClicked.connect(self.open_selected_piece)
+        self.table.setSelectionBehavior(QTableView.SelectRows)
+        self.table.setSelectionMode(QTableView.SingleSelection)
         self.table.setAlternatingRowColors(True)
+        self.table.setSortingEnabled(False)
+
+        # Connexion sélection
+        self.table.selectionModel().selectionChanged.connect(
+            self.update_actions_state
+        )
+        self.table.horizontalHeader().sectionClicked.connect(
+    self.handle_header_click
+)
         self.table.setFrameShape(QFrame.Shape.Box)
         self.table.setColumnWidth(self.COL_FACTURE, 150)
         self.table.setColumnWidth(self.COL_CLIENT, 100)
@@ -155,21 +145,24 @@ class ListePiece(QWidget):
 
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
-        self.table.itemSelectionChanged.connect(self.update_actions_state)
-
         layout.addWidget(self.table)
 
         # ---------- SIGNALS ----------
-        self.search.textChanged.connect(self.filter_local)
-        self.liste_pice.currentTextChanged.connect(self.filter_pice)
+        # self.search.textChanged.connect(self.filter_local)
+        # self.liste_pice.currentTextChanged.connect(self.filter_pice)
         self.date_debut.dateChanged.connect(self.refresh)
         self.date_fin.dateChanged.connect(self.refresh)
         self.refresh()
     
-    
-# ===============================
-# --- ACTIONS ---
-# ===============================
+    # =====================================================
+    # UTILITAIRE ICONES
+    # =====================================================
+    def icon(self, name):
+        base_path = os.path.join(os.path.dirname(__file__), "..", "assets", "icon")
+        return QIcon(os.path.join(base_path, f"{name}.svg"))
+    # ===============================
+    # --- ACTIONS ---
+    # ===============================
     def create_actions(self):
         self.act_add = QAction(QIcon(), "Nouvelle Pièce", self,toolTip="Créer une nouvelle pièce")
         self.act_add.setShortcut("Ctrl+N")
@@ -187,6 +180,9 @@ class ListePiece(QWidget):
         self.act_print = QAction(QIcon(), "Imprimer", self,toolTip="Imprimer la pièce sélectionnée")
         self.act_print.setShortcut("Ctrl+P")
         self.act_print.triggered.connect(self.facture_generate)
+        self.act_export = QAction("Exporter Excel", self)
+        self.act_export.triggered.connect(self.export_excel)
+        
 
         self.act_delete = QAction(QIcon(), "Supprimer", self,toolTip="Supprimer la pièce sélectionnée")
         self.act_delete.setShortcut("Del")
@@ -199,35 +195,93 @@ class ListePiece(QWidget):
         self.act_avoir = QAction(QIcon(), "Créer un Avoir", self,toolTip="Créer un avoir à partir de la facture sélectionnée")
         self.act_avoir.triggered.connect(self.creer_avoir_depuis_facture_a)
 
+        self.act_prev = QAction(QIcon(), "Précédent", self, toolTip="Page précédente")
+        self.act_prev.triggered.connect(lambda: self.change_page(-1))
+
+        self.act_next = QAction(QIcon(), "Suivant", self, toolTip="Page suivante")
+        self.act_next.triggered.connect(lambda: self.change_page(1))
+
+        # Aliases used in the ribbon toolbar labels.
+        self.act_new = self.act_add
+        self.act_edit = self.act_transform
+
     
-# ===============================
-# --- TOOLBAR ---
-# ===============================
+    # ===============================
+    # --- TOOLBAR ---
+    # ===============================
     def create_toolbar(self):
-        toolbar = QToolBar("Actions Pièces", self)
-        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        
+        top_toolbar = QToolBar("Navigation", self)
+        top_toolbar.setMovable(False)
+        self.top_toolbar = top_toolbar
 
-        toolbar.addAction(self.act_add)
-        toolbar.addAction(self.act_validate)
-        toolbar.addAction(self.act_transform)
-        toolbar.addSeparator()
-        toolbar.addAction(self.act_pay)
-        toolbar.addAction(self.act_print)
-        toolbar.addAction(self.act_delete)
-        toolbar.addSeparator()
-        toolbar.addAction(self.act_refresh)
-        return toolbar
+        top_toolbar.addAction(self.act_prev)
+        top_toolbar.addAction(self.act_next)
 
+        top_toolbar.addSeparator()
+
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("🔍 Rechercher facture ou client...")
+        self.search_edit.setFixedWidth(200)
+        self.search_edit.returnPressed.connect(self.apply_filters)
+        
+        top_toolbar.addWidget(self.search_edit)
+        top_toolbar.addSeparator()
+        self.liste_pice = QComboBox()
+        self.liste_pice.addItems(["Pièce", "Devis", "Commande","Bon de livraison", "Facture"])
+        self.liste_pice.activated.connect(self.apply_filters)
+        top_toolbar.addWidget(self.liste_pice)
+
+        self.date_debut = QDateEdit(QDate.currentDate())
+        self.date_fin = QDateEdit(QDate.currentDate())
+        for d in (self.date_debut, self.date_fin):
+            d.setCalendarPopup(True)
+            d.setDisplayFormat("yyyy-MM-dd")
+        top_toolbar.addWidget(QLabel("Du"))
+        top_toolbar.addWidget(self.date_debut)
+        top_toolbar.addWidget(QLabel("Au"))
+        top_toolbar.addWidget(self.date_fin)
+        
+        ribbon_toolbar = QToolBar("Actions", self)
+        ribbon_toolbar.setMovable(False)
+
+        ribbon_toolbar.setIconSize(QSize(24, 24))
+        self.ribbon_toolbar = ribbon_toolbar
+
+        # Groupe 1
+        ribbon_toolbar.addAction(self.act_new)
+        ribbon_toolbar.addAction(self.act_edit)
+        ribbon_toolbar.addAction(self.act_delete)
+        ribbon_toolbar.addSeparator()
+
+        # Groupe 2
+        ribbon_toolbar.addAction(self.act_pay)
+        ribbon_toolbar.addAction(self.act_avoir)
+        ribbon_toolbar.addSeparator()
+
+        # Groupe 3
+        ribbon_toolbar.addAction(self.act_print)
+        ribbon_toolbar.addAction(self.act_export)
+        
+        
+
+    def change_page(self, delta):
+        next_page = max(0, self.current_page + delta)
+        if next_page == self.current_page:
+            return
+        self.current_page = next_page
+        self.refresh()
    
 # ===============================
 # --- CONTEXT MENU ---
 # =============================== 
     def show_context_menu(self, pos):
-        if self.table.currentRow() < 0:
+        if not self.table.currentIndex().isValid():
             return
         menu = QMenu(self)
         menu.addAction(self.act_pay)
         menu.addAction(self.act_print)
+        menu.addAction(self.act_export)
         menu.addSeparator()
         menu.addAction(self.act_delete)
         menu.addSeparator()
@@ -239,12 +293,11 @@ class ListePiece(QWidget):
 # --- UPDATE ACTIONS STATE ---
 # ===============================
     def update_actions_state(self):
-        has_selection = self.table.currentRow() >= 0
-        type_piece = self._selected_row_value(self.COL_PIECE)
+      
+        indexes = self.table.selectionModel().selectedRows()
 
-        self.act_pay.setEnabled(
-            has_selection and type_piece == "Facture"
-        )
+        has_selection = len(indexes) > 0
+        
         self.act_validate.setEnabled(has_selection)
         self.act_transform.setEnabled(has_selection)
         self.act_pay.setEnabled(has_selection)
@@ -285,59 +338,117 @@ class ListePiece(QWidget):
 
    
     # =====================================================
-    # DONNÃ‰ES
+    # OBTENIR TOUTES LES PIECES AVEC FILTRE DE RECHERCHE
     # =====================================================
-    def get_all_pice(self):
+    def get_all_pice(self, search_text=""):
+
         conn = self.cal.connect_to_db(self.dbfolder)
-        if not conn:
-            return []
         cur = conn.cursor()
-        cur.execute("""
-            SELECT factu, client, montant, mnt_ttc, payer, monn,
-                   statut_piece,statut_paiement, datee, type_fact, origine, utilisateur
-            FROM infov ORDER BY datee DESC
-        """)
-        rows = cur.fetchall()
+
+        query = """
+            SELECT factu, client, montant, mnt_ttc,
+                payer, monn, statut_paiement,
+                statut_piece, utilisateur, datee,
+                type_fact
+            FROM infov
+        """
+
+        params = []
+
+        # 🔎 FILTRE
+        if search_text:
+            query += """
+            WHERE factu LIKE ?
+            OR client LIKE ?
+            """
+            params.extend([f"%{search_text}%", f"%{search_text}%"])
+
+        # 📊 TRI + PAGINATION
+        query += f"""
+        ORDER BY {self.current_sort_column} {self.current_sort_order}
+        LIMIT ? OFFSET ?
+        """
+
+        offset = self.current_page * self.page_size
+        params.extend([self.page_size, offset])
+        
+        # 🔥 EXECUTION (c'était ça qui manquait)
+        cur.execute(query, params)
+
+        data = cur.fetchall()
+
         conn.close()
-        return rows
+        return data
 
+    # =====================================================
+    # GESTION TRI PAR CLIQUE SUR HEADER
+    # =====================================================
+    def handle_header_click(self, logical_index):
 
-# ===============================
-# --- RAFFRAICHIR TABLE ---
-# ===============================
+        columns_map = {
+            0: "factu",
+            1: "client",
+            2: "montant",
+            3: "mnt_ttc",
+            4: "payer",
+            5: "monn",
+            6: "statut_paiement",
+            7: "utilisateur",
+            8: "datee"
+        }
+
+        col_name = columns_map.get(logical_index)
+        if not col_name:
+            return
+
+        if self.current_sort_column == col_name:
+            self.current_sort_order = (
+                "ASC" if self.current_sort_order == "DESC" else "DESC"
+            )
+        else:
+            self.current_sort_column = col_name
+            self.current_sort_order = "ASC"
+
+        self.refresh()
+
+    # ===============================
+    # --- RAFFRAICHIR TABLE ---
+    # ===============================
     def refresh(self):
-        data = self.get_all_pice()
-        self.full_rows = data
-
-        self.table.setRowCount(len(data))
-
-        for r, row in enumerate(data):
-            for c, val in enumerate(row):
-                self.table.setItem(r, c, QTableWidgetItem(str(val)))
-
+        search = self.search_edit.text().strip()
+        data = self.get_all_pice(search)
+        self.model.update_data(data)
         self.update_actions_state()
+
     # =====================================================
     # FILTRES
     # =====================================================
-    def filter_local(self, text):
-        t = text.lower()
-        self.table.setRowCount(0)
-        for row in self.full_rows:
-            if any(t in str(v).lower() for v in row):
-                r = self.table.rowCount()
-                self.table.insertRow(r)
-                for c, val in enumerate(row):
-                    self.table.setItem(r, c, QTableWidgetItem(str(val)))
+    # def filter_local(self, text):
+    #     t = text.lower()
+    #     self.table.setRowCount(0)
+    #     for row in self.full_rows:
+    #         if any(t in str(v).lower() for v in row):
+    #             r = self.table.rowCount()
+    #             self.table.insertRow(r)
+    #             for c, val in enumerate(row):
+    #                 self.table.setItem(r, c, QTableWidgetItem(str(val)))
 
-    def filter_pice(self, text):
-        self.table.setRowCount(0)
-        for row in self.full_rows:
-            if not text or text.lower() in str(row[self.COL_PIECE]).lower():
-                r = self.table.rowCount()
-                self.table.insertRow(r)
-                for c, val in enumerate(row):
-                    self.table.setItem(r, c, QTableWidgetItem(str(val)))
+    # def filter_pice(self, text):
+    #     self.table.setRowCount(0)
+    #     for row in self.full_rows:
+    #         if not text or text.lower() in str(row[self.COL_PIECE]).lower():
+    #             r = self.table.rowCount()
+    #             self.table.insertRow(r)
+    #             for c, val in enumerate(row):
+    #                 self.table.setItem(r, c, QTableWidgetItem(str(val)))
    
+    def apply_filters(self):
+        if hasattr(self, "search_edit"):
+            search = self.search_edit.text().strip()
+        else:
+            search = self.search.text().strip()
+        data = self.get_all_pice(search)
+        self.model.update_data(data)
     
 # ===============================
 # --- SUPPRIMER PIECES ---
@@ -442,9 +553,15 @@ class ListePiece(QWidget):
         if not facture_data:
             QMessageBox.warning(self, "Paiement", "Facture introuvable en base.")
             return
-    
-        if not facture_data:
-            QMessageBox.warning(self, "Erreur", "Facture introuvable.")
+        if facture_data["type_fact"] != "Facture":
+            QMessageBox.warning(self, "Paiement", f"Paiement impossible pour {facture_data['type_fact']}.")
+            return
+        
+        if facture_data["statut"] in ["PAYEE", "SOLDE"]:
+            QMessageBox.information(self, "Paiement", "Cette facture est déjà soldée.")
+            return
+        if facture_data["valide"] in ["Brouillon"]:
+            QMessageBox.information(self, "Paiement", "Cette facture n'est pas validée.")
             return
 
         dialog = PaiementResteController(
@@ -480,8 +597,10 @@ class ListePiece(QWidget):
                 "montant_ttc":res[4],
                 "montant_paye":res[5],
                 "reste":res[6],
-                "statut":res[7],
-                "client":res[2]
+                "statut":res[9],
+                "client":res[2],
+                "type_fact":res[8],
+                "valide":res[10]
             }
         return None
 
@@ -526,6 +645,24 @@ class ListePiece(QWidget):
                 conn.close()
             except Exception:
                 pass
+    
+    # =====================================================
+    # OUVRIR LA FENETRE DE LA PIECE SELECTIONNEE
+    # =====================================================
+    def open_selected_piece(self, index):
+        if not index.isValid():
+            return
+
+        row = index.row()
+        piece = self.model.get_row(row)
+
+        if not piece:
+            return
+
+        facture_id = piece[0]
+        type_piece = piece[9]
+
+        self.open_window(facture_id, type_piece)
 # ===============================
 # --- Information sur une piece ---
 # ===============================
@@ -597,7 +734,7 @@ class ListePiece(QWidget):
             except Exception:
                 pass
 # ===============================
-# --- GÃ©nÃ©rer un PDF POUR LE DOCUMENT ---
+# --- Generer un PDF POUR LE DOCUMENT ---
 # ===============================
     def facture_generate(self):
         try:
@@ -673,13 +810,13 @@ class ListePiece(QWidget):
 # --- GÃ©nÃ©rer un avoir depuis une facture ---
 # ===============================
     def creer_avoir_depuis_facture_a(self):
-        row = self.table.currentRow()
-        if row < 0:
+        index = self.table.currentIndex()
+        if not index.isValid():
             QMessageBox.warning(self, "Attention", "Sélectionnez une facture")
             return
 
-        piece_id = str(self.table.item(row, 0).text())
-        type_piece = self.table.item(row, self.COL_PIECE).text()
+        piece_id = str(self._selected_row_value(self.COL_FACTURE))
+        type_piece = self._selected_row_value(self.COL_PIECE)
         
         if type_piece != "Facture":
             QMessageBox.warning(self, "Erreur", "Un avoir ne peut venir que d'une facture")
@@ -692,3 +829,31 @@ class ListePiece(QWidget):
             self.serviceAvoir.creer_avoir(piece_id, lignes)
             # self._creer_avoir_sql(piece_id, lignes)
             QMessageBox.information(self, "Succès", "Avoir créé avec succès.") 
+
+    # exporter la liste des pièces affichées vers Excel
+    def export_excel(self):
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exporter en Excel",
+            "",
+            "Excel Files (*.xlsx)"
+        )
+
+        if not path:
+            return
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Liste Factures"
+
+        # Headers
+        ws.append(PieceTableModel.HEADERS)
+
+        # Data
+        for row in self.model._data:
+            ws.append(row)
+
+        wb.save(path)
+
+        QMessageBox.information(self, "Export", "Export réussi !")

@@ -85,21 +85,49 @@ class RapportManager:
         """)
     # === CHARGEMENT DES DONNÉES ===
     def load_data_from_sqlite(self):
+
         conn = self.cal.connect_to_db(self.db_path)
         if conn is None:
             return pd.DataFrame(), pd.DataFrame()
+
         try:
+            # ================= FACTURES =================
             factures_df = pd.read_sql_query("""
-                SELECT factu,montant,mnt_ttc,payer,monn,datee
-                FROM infov WHERE type_fact = 'Facture'
+                SELECT factu,
+                    montant,
+                    mnt_ttc,
+                    payer,
+                    monn,
+                    datee
+                FROM infov
+                WHERE type_fact = 'Facture'
             """, conn, parse_dates=["datee"])
 
+            # ================= VENTES + MARGE =================
             ventes_df = pd.read_sql_query("""
-                SELECT client, libelle,sum(montant) as montant,datee
-                FROM vent GROUP BY libelle
+                SELECT client,
+                    libelle,
+                    SUM(quantite * prix) AS montant,
+                    SUM((prix - p.price) * quantite) AS marge,
+                    datee
+                FROM vent v
+                LEFT JOIN products p ON p.ref = v.code
+                GROUP BY client, libelle, datee
             """, conn, parse_dates=["datee"])
+
+            # ================= AJOUT MARGE FACTURES =================
+            if not ventes_df.empty:
+                marge_par_date = ventes_df.groupby(
+                    pd.to_datetime(ventes_df["datee"])
+                )["marge"].sum()
+
+                factures_df["datee"] = pd.to_datetime(factures_df["datee"])
+
+                factures_df["marge"] = factures_df["datee"].map(marge_par_date).fillna(0)
+
             conn.close()
             return factures_df, ventes_df
+
         except Exception as e:
             print(f"Erreur DB : {e}")
             return pd.DataFrame(), pd.DataFrame()

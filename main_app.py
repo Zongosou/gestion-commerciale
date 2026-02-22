@@ -83,6 +83,7 @@ class StockWindow(QMainWindow):
         self.app_content.addWidget(self.app_caisse)
         self.manager = RapportManager(db_path)
         facture, ventes = self.manager.load_data_from_sqlite()
+        
         self.app_content.addWidget(RapportWindow(facture, ventes, db_path))
         root_layout.addWidget(self.app_content, 1)
     # Styles
