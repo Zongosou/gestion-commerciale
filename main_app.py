@@ -40,7 +40,9 @@ class StockWindow(QMainWindow):
         h = int(size.height() * 0.8)
         self.resize(w, h)
         self.cal = cal()
-        self.user = user
+        self.user = user 
+        if self.user is None:
+            self.user = "Invité"
 
         # Menu Bar client et fournisseur
         menu_bar = QMenuBar(self)
@@ -160,20 +162,20 @@ class StockWindow(QMainWindow):
         logout(self.user, db_path)
         event.accept()
 
-app = QApplication(sys.argv)
+# app = QApplication(sys.argv)
 
-login = LoginWindow(db_path,db_logo)
+# login = LoginWindow(db_path,db_logo)
 
-if login.exec() == QDialog.Accepted:
-    user_id = login.user_id
-    username = login.user
-    print(username)
-    main_win = StockWindow(username)
-    main_win.show()
-    sys.exit(app.exec())
+# if login.exec() == QDialog.Accepted:
+#     user_id = login.user_id
+#     username = login.user
+#     print(username)
+#     main_win = StockWindow(username)
+#     main_win.show()
+#     sys.exit(app.exec())
 
-# if __name__ == "__main__":
-#     app = QApplication(sys.argv)
-#     win = StockWindow()
-#     win.show()
-#     app.exec()
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    win = StockWindow()
+    win.show()
+    app.exec()

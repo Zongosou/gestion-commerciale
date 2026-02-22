@@ -24,8 +24,12 @@ ACTIONS = [
     "print",
     "view"
 ]
-
-
+import logging
+logging.basicConfig(
+    filename="log/app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 class PermissionEditor(QWidget):
 
     def __init__(self, db_path):
@@ -226,3 +230,4 @@ class PermissionEditor(QWidget):
 
         QMessageBox.information(self, "Succès",
                                 "Permissions enregistrées avec succès.")
+        logging.info(f"Permissions mises à jour pour le rôle ID {role_id}.")

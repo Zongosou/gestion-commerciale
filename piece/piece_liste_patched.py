@@ -94,11 +94,13 @@ class ListePiece(QWidget):
         layout.addWidget(self.toolbar)
         # ================= CARTES =================
         cards_row = QHBoxLayout()
+
         self.card_total = SummaryCard("Chiffres d'Affaires (CA)", "0.0", accent="#2D7EF7")
         self.card_alerts = SummaryCard("Nombre de Factures", "0.0", accent="#F59E0B")
         self.card_value = SummaryCard("Panier Moyen", "0.0", accent="#10B981")
-
-        for card in (self.card_total, self.card_alerts, self.card_value):
+        self.card_marge = SummaryCard("Marge Totale", "0.0", accent="#8B5CF6")
+        
+        for card in (self.card_total, self.card_alerts, self.card_value,self.card_marge):
             cards_row.addWidget(card, 1)
 
         layout.addLayout(cards_row)
@@ -238,6 +240,11 @@ class ListePiece(QWidget):
 # ===============================
     def update_actions_state(self):
         has_selection = self.table.currentRow() >= 0
+        type_piece = self._selected_row_value(self.COL_PIECE)
+
+        self.act_pay.setEnabled(
+            has_selection and type_piece == "Facture"
+        )
         self.act_validate.setEnabled(has_selection)
         self.act_transform.setEnabled(has_selection)
         self.act_pay.setEnabled(has_selection)
@@ -255,6 +262,10 @@ class ListePiece(QWidget):
         self.card_total.findChild(QLabel, "SummaryValue").setText(str(total_products))
         self.card_alerts.findChild(QLabel, "SummaryValue").setText(str(low_stock_alerts))
         self.card_value.findChild(QLabel, "SummaryValue").setText(self.cal.separateur_milieur(total_value))
+        marge_totale = self.manager.marge_totale()
+        self.card_marge.findChild(QLabel, "SummaryValue").setText(
+                                    self.cal.separateur_milieur(marge_totale)
+                                )
 
 
     # =====================================================
@@ -295,17 +306,16 @@ class ListePiece(QWidget):
 # --- RAFFRAICHIR TABLE ---
 # ===============================
     def refresh(self):
-        self.table.setRowCount(0)
         data = self.get_all_pice()
         self.full_rows = data
 
-        for row in data:
-            r = self.table.rowCount()
-            self.table.insertRow(r)
+        self.table.setRowCount(len(data))
+
+        for r, row in enumerate(data):
             for c, val in enumerate(row):
                 self.table.setItem(r, c, QTableWidgetItem(str(val)))
-            self.update_actions_state()
 
+        self.update_actions_state()
     # =====================================================
     # FILTRES
     # =====================================================
@@ -387,8 +397,18 @@ class ListePiece(QWidget):
                     sql1 = "DELETE FROM vent WHERE facture = ?" if facture_type in ["Facture", "Ticket"] else "DELETE FROM liste WHERE facture = ?"
                     cur.execute(sql1, (facture_id,))
                     cur.execute("DELETE FROM infov WHERE factu=?", (facture_id,))
+                    cur.execute("SELECT monn FROM infov WHERE factu=?", (facture_id,))
+                    reste_check = cur.fetchone()
+
+                    if reste_check and float(reste_check[0]) != 0:
+                        QMessageBox.warning(
+                            self,
+                            "Suppression impossible",
+                            "Impossible de supprimer une facture non soldée."
+                        )
+                        continue
                 con.commit()
-                QMessageBox.information(self, "Succès", "Les factures ont été supprimées avec succès.")
+                QMessageBox.information(self, "Succès", f"Les {len(ids_to_delete)} pièces ont été supprimées avec succès.")
             except Exception as e:
                 con.rollback()
                 log.error(f"Erreur suppression pièces: {e}", exc_info=True)
@@ -537,12 +557,12 @@ class ListePiece(QWidget):
             cv = cur.fetchone()
             if cv:
                 # protections d'index
-                self.date = cv[8]
+                self.date = cv[7] if len(cv) > 7 and cv[7] else "_"
                 self.facto = cv[1]
                 self.montant_verse = cv[5]
                 self.reste = cv[6]
-                self.type_fact = cv[9]
-                self.remarque = cv[11] if len(cv) > 11 and cv[11] else ""
+                self.type_fact = cv[8] if len(cv) > 8 and cv[8] else ""
+                self.remarque = cv[13] if len(cv) > 13 and cv[13] else ""
             info = 'SELECT nom,cont,adr,ville from client where id=?'
             cur.execute(info, [cv[2] if cv else None])
             info_clt = cur.fetchone()
@@ -659,7 +679,7 @@ class ListePiece(QWidget):
             return
 
         piece_id = str(self.table.item(row, 0).text())
-        type_piece = self.table.item(row, 8).text()
+        type_piece = self.table.item(row, self.COL_PIECE).text()
         
         if type_piece != "Facture":
             QMessageBox.warning(self, "Erreur", "Un avoir ne peut venir que d'une facture")

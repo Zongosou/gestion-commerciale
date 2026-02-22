@@ -7,12 +7,13 @@ import os
 
 from fonction.valide import choixPiece
 from piece.compl import get_pdf_directory
-locale.setlocale(locale.LC_ALL, "")  # pour sÃƒÂ©parateur milliers si besoin
+from vente.models.panier_model import PanierModel
+locale.setlocale(locale.LC_ALL, "")  # pour separateur milliers si besoin
 from fonction.model import Model
 from PySide6.QtCore import Qt, QDateTime, QSize
 from PySide6.QtWidgets import (
      QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,QApplication,
-    QLabel, QLineEdit, QDateTimeEdit, QPushButton, QComboBox, QTableWidget,
+    QLabel, QLineEdit, QDateTimeEdit, QComboBox,
     QTableWidgetItem, QDoubleSpinBox, QHeaderView, QMessageBox,QSizePolicy,QDialog,
     QAbstractItemView, QProgressBar, QCompleter, QStyle, QCheckBox, QTableView,
     QInputDialog,QFormLayout
@@ -31,8 +32,11 @@ STATUT_PIECE = {
     "Facture": ["Brouillon", "Validée"]
 }
 
-log = logging.getLogger(__name__)
-
+logging.basicConfig(
+    filename="log/app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 class Vente(QMainWindow):
     def __init__(self, dbfolder, current_user=None) -> None:
         super().__init__()
@@ -40,6 +44,7 @@ class Vente(QMainWindow):
         self.setWindowIcon(QIcon(':/icon/icone.png'))
         self.dbsource = DataManage(dbfolder)
         self.service = VenteService()
+        self.stock_cache = {}
         
         # --- Taille et position fenetre (stable) ---
         screen = QApplication.primaryScreen().availableGeometry()
@@ -180,11 +185,11 @@ class Vente(QMainWindow):
         grp_panier.setSizePolicy(sizePolicyTable)
         vpan = QVBoxLayout()
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableView()
+        self.panier_model = PanierModel(stock_cache=self.stock_cache)
+        self.table.setModel(self.panier_model)
         self.table.setSizePolicy(sizePolicyTable)
         self.table.setStyleSheet("selection-background-color: lightblue;")
-        headers = ["Code", "Désignation", "Quantitée", "Prix Unitaire", "Montant", "Action"]
-        self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setColumnHidden(0, True)  # ne pas afficher colonne code
@@ -388,7 +393,7 @@ class Vente(QMainWindow):
                 model.appendRow(items)
             self.article_combo.setModel(model)
         except Exception as e:
-            log.error("Erreur DB dans liste_deroulante: %s", e)
+            logging.error("Erreur DB dans liste_deroulante: %s", e)
 
     # --- RÃƒÂ©cupÃƒÂ©rer les remarques existantes ---
     
@@ -430,180 +435,185 @@ class Vente(QMainWindow):
 # --- LIESTE DES ARTICLES ---
 # ===============================
     def combo_article_selected(self, index):
-        """Ajoute l'article sélectionne dans la table si stock dispo."""
-        try:
+        """
+        Ajoute un article dans le PanierModel (MVC version).
+        """
 
+        try:
             model = self.article_combo.model()
             if not model or index < 0:
                 return
 
-            # lire infos article
             libelle = model.index(index, 0).data()
             code = model.index(index, 1).data()
             prix = float(model.index(index, 2).data())
 
-            quantite_depot_raw = self.dbsource.get_stock_dispo(code)
-            try:
-                quantite_depot = float(quantite_depot_raw or 0)
-            except (TypeError, ValueError):
-                quantite_depot = 0.0
+            # --------- STOCK (chargé une seule fois) ----------
+            if code not in self.stock_cache:
+                stock = float(self.dbsource.get_stock_dispo(code) or 0)
+                self.stock_cache[code] = stock
+            else:
+                stock = self.stock_cache[code]
 
-            self.label_qty_.setText(str(quantite_depot_raw))
+            self.label_qty_.setText(str(stock))
+            # --------- Vérification facture ----------
+            if self.piece == "Facture" and stock <= 0:
+                QMessageBox.warning(
+                    self,
+                    "Stock insuffisant",
+                    f"Aucun stock disponible pour {libelle}"
+                )
+                return
 
-            piece_code = str(self.piece).strip().upper()
-            is_facture = piece_code in ("FACTURE", "FAC")
-
-            # vÃƒÂ©rifier stock dispo avant ajout (uniquement pour facture)
-            if is_facture:
-                if quantite_depot < 1:
-                    QMessageBox.warning(
+            # --------- Vérifier doublon ----------
+            for row in self.panier_model.get_all_data():
+                if row[0] == code:
+                    QMessageBox.information(
                         self,
-                        "Stock insuffisant",
-                        f"L'article '{libelle}' (code {code}) n'a pas de stock.\n"
-                        f"Stock disponible : {quantite_depot} unité(s)."
+                        "Article existant",
+                        f"{libelle} est déjà dans le panier."
                     )
                     return
-                
-                if self.cal.verifi_exit(self.table, code) is False:
 
-                    row = self.table.rowCount()
-                    self.table.insertRow(row)
-                    qt_spin = QDoubleSpinBox()
-                    qt_spin.setMinimum(0)
-                    qt_spin.setMaximum(9999999999)
-                    qt_spin.setValue(1.0)
-                    qt_spin.valueChanged.connect(self.upd_value_cel)
-                    prix_spin = QDoubleSpinBox()
-                    prix_spin.setMinimum(0)
-                    prix_spin.setMaximum(9999999999)
-                    prix_spin.setValue(prix)
-                    prix_spin.valueChanged.connect(self.upd_value_cel)
-                    montant = 1 * prix
-                    # bouton supprimer (liÃƒÂ© ÃƒÂ  la ligne)
-                    btn = QPushButton("Supprimer")
-                    btn.setStyleSheet("background-color: transparent;border: none; color: red;")
-                    btn.clicked.connect(lambda _, r=row: self.remove_row(r))
-                    # remplir ligne
-                    self.table.setItem(row, 0, QTableWidgetItem(code))
-                    self.table.setItem(row, 1, QTableWidgetItem(libelle))
-                    self.table.setCellWidget(row, 2, qt_spin)
-                    self.table.setCellWidget(row, 3, prix_spin)
-                    self.table.setItem(row, 4, QTableWidgetItem(f"{montant:.2f}"))
-                    self.table.setCellWidget(row, 5, btn)
-                    self.somme_vente()
-                else:
-                    QMessageBox.information(self, "Ajout article", f"L'article :'{libelle}' existe déjà  dans la liste.")
-            else:
-                if self.cal.verifi_exit(self.table, code) is False:
-
-                    row = self.table.rowCount()
-                    self.table.insertRow(row)
-                    qt_spin = QDoubleSpinBox()
-                    qt_spin.setMinimum(0)
-                    qt_spin.setMaximum(9999999999)
-                    qt_spin.setValue(1.0)
-                    qt_spin.valueChanged.connect(self.upd_value_cel)
-                    prix_spin = QDoubleSpinBox()
-                    prix_spin.setMinimum(0)
-                    prix_spin.setMaximum(9999999999)
-                    prix_spin.setValue(prix)
-                    prix_spin.valueChanged.connect(self.upd_value_cel)
-                    montant = 1 * prix
-                    # bouton supprimer (liÃƒÂ© ÃƒÂ  la ligne)
-                    
-                    btn = QPushButton("Supprimer")
-                    btn.setStyleSheet("background-color: transparent;border: none; color: red;")
-                    btn.clicked.connect(lambda _, r=row: self.remove_row(r))
-                    # remplir ligne
-                    self.table.setItem(row, 0, QTableWidgetItem(code))
-                    self.table.setItem(row, 1, QTableWidgetItem(libelle))
-                    self.table.setCellWidget(row, 2, qt_spin)
-                    self.table.setCellWidget(row, 3, prix_spin)
-                    self.table.setItem(row, 4, QTableWidgetItem(f"{montant:.2f}"))
-                    self.table.setCellWidget(row, 5, btn)
-                    self.somme_vente()
-                else:
-                    QMessageBox.information(self, "Ajout article", f"L'article :'{libelle}' existe déjà  dans la liste.")
+            # --------- Ajout ----------
+            prix_achat = float(self.dbsource.get_prix_achat(code) or 0)
+            self.panier_model.add_article(code, libelle, 1.0, prix, prix_achat)
+            self.somme_vente()
 
         except Exception as e:
-            log.error("Erreur combo_article_selected: %s", e)
-            QMessageBox.critical(self, "Erreur", f"Impossible d'ajouter l'article.\n{e}")
-
+            logging.error(f"Erreur ajout article MVC: {e}", exc_info=True)
+            QMessageBox.critical(self, "Erreur", str(e))
+    
 
 
 # ===============================
 # --- RETIRER UNE LIGNE ---
 # ===============================
+    def remove_selected_row(self):
+        """
+        Supprime la ligne sélectionnée dans la vue
+        """
 
-    def remove_row(self, row_index: int):
-        try:
-            if row_index < 0 or row_index >= self.table.rowCount():
-                QMessageBox.warning(self, 'Avertissement', 'Ligne invalide.')
-                return
-            msg = QMessageBox(self)
-            msg.setWindowTitle("SUPPRESSION")
-            msg.setText("Etes-vous sur de vouloir retirer cette ligne ?")
-            yes = msg.addButton("Oui", QMessageBox.ButtonRole.YesRole)
-            non = msg.addButton("Non", QMessageBox.ButtonRole.NoRole)
-            msg.exec()
-            if msg.clickedButton() == yes:
-                self.table.removeRow(row_index)
-                self.somme_vente()
-        except Exception as e:
-            log.error(f"Erreur remove_row: {e}")
-
-    
-# ===============================
-# --- MISE Ãƒâ‚¬ JOUR DES VALEURS ---
-# ===============================
-    def upd_value_cel(self):
         try:
             index = self.table.currentIndex().row()
+
             if index < 0:
-                # Si pas de ligne sÃ©lectionnÃ©e on recalculera tous les montants
-                pass
-            # recalculer le montant de la ligne courante (ou de toutes)
-            
+                QMessageBox.warning(self, "Suppression", "Aucune ligne sélectionnée.")
+                return
+
+            msg = QMessageBox.question(
+                self,
+                "Confirmation",
+                "Voulez-vous supprimer cette ligne ?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+
+            if msg == QMessageBox.Yes:
+                self.panier_model.remove_row(index)
+                self.somme_vente()
+
+        except Exception as e:
+            logging.error(f"Erreur suppression MVC: {e}", exc_info=True)
+
+    
+    # gestion du bouton supprimer (pour les lignes ajoutées avant validation)
+    def handle_remove_row(self):
+        button = self.sender()
+        if not button:
+            return
+
+        for row in range(self.table.rowCount()):
+            if self.table.cellWidget(row, 5) == button:
+                self.remove_row(row)
+                break
+# ===============================
+# --- MISE A JOUR DES VALEURS ---
+# ===============================
+    def upd_value_cel(self):
+        """
+        Version optimisée :
+        - Pas de requête DB
+        - Utilise cache stock
+        - Recalcul global propre
+        """
+
+        try:
+            total_ht = 0.0
+
             for row in range(self.table.rowCount()):
+
                 prix_widget = self.table.cellWidget(row, 3)
                 qte_widget = self.table.cellWidget(row, 2)
-                if prix_widget is None or qte_widget is None:
-                    continue
-                
-                prix = float(prix_widget.value())
-                qte = float(qte_widget.value())
-                new_mnt = prix * qte
-                self.table.setItem(row, 4, QTableWidgetItem(f"{new_mnt:.2f}"))
+                code_item = self.table.item(row, 0)
 
-            # recalcul total
-            total_sum = 0.0
-            for row in range(self.table.rowCount()):
-                mnt_item = self.table.item(row, 4)
-                if mnt_item:
-                    try:
-                        total_sum += float(mnt_item.text())
-                    except ValueError:
-                        continue
-            self.ht_label.setText(f"{total_sum:.2f}")
-            self.somme_vente()
+                if not prix_widget or not qte_widget or not code_item:
+                    continue
+
+                prix = prix_widget.value()
+                qte = qte_widget.value()
+                code = code_item.text()
+
+                # =============================
+                # 🔴 Vérification stock via cache
+                # =============================
+                if self.piece == "Facture":
+
+                    stock_dispo = self.stock_cache.get(code, 0)
+
+                    if qte > stock_dispo:
+
+                        QMessageBox.warning(
+                            self,
+                            "Stock insuffisant",
+                            f"Stock disponible : {stock_dispo}"
+                        )
+
+                        qte_widget.blockSignals(True)
+                        qte_widget.setValue(stock_dispo)
+                        qte_widget.blockSignals(False)
+
+                        qte = stock_dispo
+
+                # =============================
+                # 🔵 Calcul montant ligne
+                # =============================
+                montant = prix * qte
+
+                self.table.setItem(
+                    row,
+                    4,
+                    QTableWidgetItem(f"{montant:.2f}")
+                )
+
+                total_ht += montant
+
+            # =============================
+            # 🟢 Mise à jour Total HT
+            # =============================
+            self.ht_label.setText(f"{total_ht:.2f}")
+
+            # =============================
+            # 🟣 Mise à jour TTC + reste
+            # =============================
+            self.mnt_ttc()
+
         except Exception as e:
-            log.error(f"upd_value_cel error: {e}")
+            logging.error(f"Erreur upd_value_cel optimisée: {e}", exc_info=True)
+            QMessageBox.critical(self, "Erreur", str(e))
 
 # ===============================
 # --- CALCUL DU TOTAL DE LA VENTE ---
 # ===============================
     def somme_vente(self):
-        total_sum = 0.0
-        for row in range(self.table.rowCount()):
-            mnt = self.table.item(row, 4)
-            if mnt is not None:
-                try:
-                    total_sum += float(mnt.text())
-                except ValueError:
-                    log.warning(f"Valeur non numerique dans le montant de la ligne {row}:{mnt.text()}")
-                    continue
-        self.ht_label.setText(f"{total_sum:.2f}")
+        total_ht = self.panier_model.get_total_ht()
+        total_marge = self.panier_model.get_total_marge()
+
+        self.ht_label.setText(f"{total_ht:.2f}")
+
+        print("Marge totale :", total_marge)
+
         self.mnt_ttc()
+    
 
 # ===============================
 # --- CALCUL DU MONTANT TTC ---
@@ -651,21 +661,38 @@ class Vente(QMainWindow):
 # ===============================
 # --- VALIDATION DES SAISIES ---
 # ===============================
-    def _validate_inputs(self) -> bool:
-        """Vérifie que toutes les conditions de saisie sont remplies"""
-        nmclt = self.nom_clt
+    # def _validate_inputs(self) -> bool:
+    #     """Vérifie que toutes les conditions de saisie sont remplies"""
+    #     nmclt = self.nom_clt
 
-        if self.table.rowCount() <= 0:
-            QMessageBox.warning(self, "ENREGISTREMENT", "Aucun article. Veuillez ajouter des produits !")
+    #     if self.table.rowCount() <= 0:
+    #         QMessageBox.warning(self, "ENREGISTREMENT", "Aucun article. Veuillez ajouter des produits !")
+    #         return False
+    #     if not self.piece or self.piece == "Pièces":
+    #         QMessageBox.warning(self, "ENREGISTREMENT", "Type de pièce non reconnu.")
+    #         return False
+    #     if not nmclt or nmclt.strip() == "":
+    #         QMessageBox.warning(self, "ENREGISTREMENT", "Veuillez sélectionner un client.")
+    #         return False
+    #     return True
+    def _validate_inputs(self) -> bool:
+        """
+        Validation avant enregistrement
+        """
+
+        if not self.panier_model.get_all_data():
+            QMessageBox.warning(self, "ENREGISTREMENT", "Aucun article ajouté.")
             return False
-        if not self.piece or self.piece == "Pièces":
-            QMessageBox.warning(self, "ENREGISTREMENT", "Type de pièce non reconnu.")
+
+        if not self.piece:
+            QMessageBox.warning(self, "ENREGISTREMENT", "Type de pièce invalide.")
             return False
-        if nmclt == "" or None:
+
+        if not self.nom_clt:
             QMessageBox.warning(self, "ENREGISTREMENT", "Veuillez sélectionner un client.")
             return False
-        return True
 
+        return True
     
     @staticmethod
     def safe_execution(func):
@@ -674,7 +701,7 @@ class Vente(QMainWindow):
             try:
                 return func(self, *args, **kwargs)
             except Exception as e:
-                log.exception("Erreur: %s", e)
+                logging.exception("Erreur: %s", e)
                 QMessageBox.critical(self, "Erreur", f"Une erreur est survenue : {e}")
                 return None
         return wrapper
@@ -720,7 +747,9 @@ class Vente(QMainWindow):
             verse=self.paid_spin.value()
             )
         
-
+        if not self.nom_clt:
+            QMessageBox.warning(self, "ENREGISTREMENT", "Veuillez sélectionner un client.")
+            return
         self.enregistrer_piece_usecase.execute(
             piece=self.piece,
             id_clt=self.id_clt,
@@ -741,134 +770,62 @@ class Vente(QMainWindow):
         QMessageBox.information(
             self,
             "Succès",
-            f"{self.piece} enregistré(e) en {etat_piece_} : {numero}"
+            f"{self.piece} enregistré(e) en {etat_piece_} : {numero} par {self.current_user}"
         )
 
 
-        # except Exception as e:
-        #     QMessageBox.critical(self, "Erreur", str(e))
-
-    # def list_vente(self):
-    #     """Enregistre les donnees de vente avec l'utilisateur courant"""
-    #     if not self._validate_inputs():
-    #         return
-
-    #     PIECES = {
-    #         "Facture": "FAC",
-    #         "Bon de livraison": "BL",
-    #         "Commande": "CMD",
-    #         "Devis": "DV"
-    #     }
-
-    #     if self.piece not in PIECES:
-    #         QMessageBox.warning(self, "Erreur", "Type de piÃ¨ce inconnu")
-    #         return
-
-    #     conn = self.cal.connect_to_db(self.dbfolder)
-    #     dat = self.date_edit.dateTime().toString("yyyy-MM-dd HH:mm")
-    #     dat_ = datetime.strptime(dat, "%Y-%m-%d %H:%M").date()
-    #     taut_tva = self.tva_spin.value()
-    #     montant_ht = float(self.ht_label.text() or 0)
-
-    #     if conn is None:
-    #         QMessageBox.critical(self, "Erreur BD", "Impossible de se connecter Ã  la base de donnÃ©es.")
-    #         return
-
-    #     if self.piece == "Facture":
-    #         etat_piece = self.service.statut(
-    #             float(self.ttc_label.text() or 0),
-    #             self.paid_spin.value()
-    #         )
-    #     else:
-    #         etat_piece = self.status_line.currentText()
-
-    #     try:
-    #         cur = conn.cursor()
-    #         conn.execute("BEGIN IMMEDIATE")
-
-    #         prefixe = PIECES[self.piece]
-    #         numero = self.numeroteur.generer(prefixe, conn=conn, cur=cur)
-    #         if numero is None:
-    #             raise RuntimeError("Impossible de gÃ©nÃ©rer un numÃ©ro de piÃ¨ce.")
-    #         self.num_line.setText(numero)
-
-    #         L = self.service.Liste_donne(
-    #             id_clt=self.id_clt,
-    #             factu=numero,
-    #             dat=dat_,
-    #             remarque=self.remarque_line.text(),
-    #             date_edit=self.date_edit,
-    #             mnt_ht=montant_ht,
-    #             e_mntpy=self.paid_spin.value(),
-    #             va_aj=taut_tva,
-    #             piece=self.piece,
-    #             current_user=self.current_user,
-    #             etat=etat_piece
-    #         )
-
-    #         data_vente = self.dbsource.get_data_by(
-    #             self.id_clt,
-    #             self.nom_clt,
-    #             self.table,
-    #             self.date_edit,
-    #             numero
-    #         )
-
-    #         if not data_vente:
-    #             conn.rollback()
-    #             QMessageBox.warning(self, "DonnÃ©es manquantes", "Aucune ligne de vente trouvÃ©e.")
-    #             return
-
-    #         if self.piece == "Facture":
-    #             self.dbsource._save_facture(
-    #                 cur,
-    #                 mode_paiement=self.mode_paiement.currentText(),
-    #                 L=L,
-    #                 data_vente=data_vente,
-    #                 numero=numero,
-    #                 date_emission=self.date_edit.dateTime().toString("yyyy-MM-dd HH:mm"),
-    #                 user=self.current_user
-    #             )
-    #         else:
-    #             self.dbsource._save_devis_commande(cur, L, data_vente)
-
-    #         conn.commit()
-    #     except Exception as e:
-    #         conn.rollback()
-    #         QMessageBox.critical(self, "Erreur", f"Ã‰chec de l'enregistrement : {e}")
-    #         return
-    #     finally:
-    #         conn.close()
-
-    #     QMessageBox.information(self, "Succes", f"{self.piece} : {self.num_line.text()} enregistree par {self.current_user}.")
-
+        
+   
 # ===============================
 # --- LISTE DES ARTICLES POUR ENREGISTREMENT ---
 # ===============================
     def liste_article(self):
+        """
+        Retourne les articles du panier pour enregistrement
+        """
+
+        donnees = []
+
+        for row in self.panier_model.get_all_data():
+            if len(row) >= 9:
+                designation = row[1]
+                qte = row[2]
+                prix = row[5]
+                montant = row[8]
+            elif len(row) >= 5:
+                designation = row[1]
+                qte = row[2]
+                prix = row[3]
+                montant = row[4]
+            else:
+                continue
+            donnees.append([designation, qte, prix, montant])
+
+        return donnees
+    # def liste_article(self):
         
-        table = self.table
-        donnee = []
-        for row in range(table.rowCount()):
-            if not table.item(row, 0):
-                continue
+    #     table = self.table
+    #     donnee = []
+    #     for row in range(table.rowCount()):
+    #         if not table.item(row, 0):
+    #             continue
 
-            code_item = table.item(row, 0)
-            if code_item is None:
-                continue
-            code = code_item.text()
-            prd_item = table.item(row, 1)
-            if prd_item is None:
-                continue
-            prd = prd_item.text()
-            qte = float(table.cellWidget(row, 2).value())
-            pri = float(table.cellWidget(row, 3).value())
-            mnt_item = table.item(row, 4)
-            mnt = float(mnt_item.text()) if mnt_item is not None else pri * qte
-            row_data = [prd,qte, pri, mnt]
-            donnee.append(row_data)
+    #         code_item = table.item(row, 0)
+    #         if code_item is None:
+    #             continue
+    #         code = code_item.text()
+    #         prd_item = table.item(row, 1)
+    #         if prd_item is None:
+    #             continue
+    #         prd = prd_item.text()
+    #         qte = float(table.cellWidget(row, 2).value())
+    #         pri = float(table.cellWidget(row, 3).value())
+    #         mnt_item = table.item(row, 4)
+    #         mnt = float(mnt_item.text()) if mnt_item is not None else pri * qte
+    #         row_data = [prd,qte, pri, mnt]
+    #         donnee.append(row_data)
 
-        return donnee
+    #     return donnee
     
 # ===============================
 # --- GENERATION DE LA DOCUMENT ---
@@ -947,7 +904,7 @@ class Vente(QMainWindow):
                 return
                 
         except Exception as e:
-            log.error(e, exc_info=True)
+            logging.error(e, exc_info=True)
             QMessageBox.critical(self, "Erreur PDF", str(e))
         finally:
             if conn:

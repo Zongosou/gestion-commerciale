@@ -94,6 +94,19 @@ class DataManage(DBServiceMixin):
             return res[0] if res and res[0] is not None else 0
         except Exception:
             return 0
+
+    def get_prix_achat(self, code):
+        try:
+            conn = self.cal.connect_to_db(self.dbfolder)
+            if conn is None:
+                return 0
+            cur = conn.cursor()
+            cur.execute("SELECT IFNULL(price,0) FROM stock WHERE id_libelle=?", (code,))
+            res = cur.fetchone()
+            conn.close()
+            return res[0] if res and res[0] is not None else 0
+        except Exception:
+            return 0
     
     def _save_devis_commande(self, cur, L, data_vente):
         """Traitement pour devis ou commande"""
@@ -191,6 +204,31 @@ class DataManage(DBServiceMixin):
         else:
             dat = date_edit
         data_vente = {"line_items": []}
+        model = table.model() if hasattr(table, "model") else None
+
+        # Support MVC table view backed by PanierModel
+        if model is not None and hasattr(model, "get_all_data"):
+            for raw in model.get_all_data():
+                if not raw:
+                    continue
+                if len(raw) >= 9:
+                    code = raw[0]
+                    prd = raw[1]
+                    qte = raw[2]
+                    pri = raw[5]  # prix net
+                    mnt = raw[8]
+                elif len(raw) >= 5:
+                    code, prd, qte, pri, mnt = raw[:5]
+                else:
+                    continue
+                row_data = [
+                    nmclt, str(code), factu, str(prd),
+                    float(pri), float(qte), float(mnt), dat, id_clt
+                ]
+                data_vente["line_items"].append(row_data)
+            return data_vente
+
+        # Fallback: legacy QTableWidget workflow
         for row in range(table.rowCount()):
             if not table.item(row, 0):
                 continue
@@ -207,8 +245,6 @@ class DataManage(DBServiceMixin):
             pri = float(table.cellWidget(row, 3).value())
             mnt_item = table.item(row, 4)
             mnt = float(mnt_item.text()) if mnt_item is not None else pri * qte
-
-            
             row_data = [nmclt, code, factu, prd, pri, qte, mnt, dat, id_clt]
             data_vente["line_items"].append(row_data)
 

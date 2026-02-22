@@ -62,6 +62,18 @@ class RapportManager:
         nb = self.nb_factures()
         return ca / nb if nb > 0 else 0
 
+    def marge_totale(self):
+        rows = self._query("""
+            SELECT COALESCE(SUM(
+                (IFNULL(v.prix, 0) - IFNULL(s.price, 0)) * IFNULL(v.quantite, 0)
+            ), 0)
+            FROM vent v
+            LEFT JOIN stock s ON s.id_libelle = v.code
+            LEFT JOIN infov i ON i.factu = v.facture
+            WHERE i.type_fact = 'Facture' OR i.type_fact IS NULL
+        """)
+        return float(rows[0][0]) if rows and rows[0] and rows[0][0] is not None else 0.0
+
     def resume_tresorerie(self):
         return self._query("""
             SELECT 
@@ -91,6 +103,7 @@ class RapportManager:
         except Exception as e:
             print(f"Erreur DB : {e}")
             return pd.DataFrame(), pd.DataFrame()
+    
     def recharger_tresorie(self):
         return self._query("SELECT date_operation,type,libelle,montant,compte FROM tresorerie ORDER BY date_operation DESC")
 

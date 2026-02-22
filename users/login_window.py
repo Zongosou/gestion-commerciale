@@ -34,6 +34,14 @@ STYLE_CONSTANTS = {
     "separator_color": "#6B7280",
     "font_family": "Inter, sans-serif",
 }
+
+import logging
+
+logging.basicConfig(
+    filename="log/app.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 # Simulation du service (à importer de votre core.services)
 from core.services.auth_service import AuthService
 # --- Custom Widgets ---
@@ -292,6 +300,15 @@ class LoginWindow(QDialog):
         layout.addWidget(self.btn_login)
 
         self.loader = QProgressBar()
+        self.loader.setStyleSheet("""
+            QProgressBar {
+                border: none;
+                background: #1F2937;
+            }
+            QProgressBar::chunk {
+                background-color: #6366F1;
+            }
+            """)
         self.loader.setRange(0, 0)
         self.loader.setVisible(False)
         self.loader.setFixedHeight(4)
@@ -301,11 +318,7 @@ class LoginWindow(QDialog):
         self.forgot_password_link.setFixedHeight(20)
         self.forgot_password_link.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         self.forgot_password_link.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        # self.forgot_password_link.linkActivated.connect(self._switch_to_forgot_password)
-        # self.btn_forgot = QPushButton("Mot de passe oublié?")
-        # self.btn_forgot.setFixedHeight(40)
-        # self.btn_forgot.setFlat(True)
-        # self.btn_forgot.setStyleSheet("color: #909399; font-size: 12px;")
+        
         layout.addWidget(self.forgot_password_link, 0, Qt.AlignCenter)
 
     # Logic
@@ -340,7 +353,8 @@ class LoginWindow(QDialog):
         if not user or not pwd:
             QMessageBox.warning(self, "Erreur", "Champs incomplets.")
             return
-
+        self.input_user.setEnabled(False)
+        self.input_pass.setEnabled(False)
         # UI State
         self.btn_login.setEnabled(False)
         self.btn_login.setText("Authentification...")
@@ -359,7 +373,8 @@ class LoginWindow(QDialog):
         self.btn_login.setText("Connexion")
 
         success, data, login_user = self.parse_auth_data(result)
-
+        self.input_user.setEnabled(True)
+        self.input_pass.setEnabled(True)
         if success:
             if self.check_remember.isChecked():
                 # Stockage sécurisé
@@ -367,13 +382,18 @@ class LoginWindow(QDialog):
             self.user_id = data
             self.user = login_user
             self.accept()
+            logging.info(f"Utilisateur '{login_user}' connecté avec succès.")
         else:
             QMessageBox.critical(self, "Échec", f"Accès refusé : {data}")
+            logging.warning(f"Échec de connexion pour '{login_user}': {data}")
 
     def on_login_error(self, message):
         self.loader.setVisible(False)
         self.btn_login.setEnabled(True)
+        self.input_user.setEnabled(True)
+        self.input_pass.setEnabled(True)
         QMessageBox.critical(self, "Erreur Système", message)
+        logging.error(f"Erreur lors de la connexion: {message}")
 
     def parse_auth_data(self, result):
         """Normalise la réponse du service d'authentification."""
