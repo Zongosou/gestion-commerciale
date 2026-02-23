@@ -250,6 +250,8 @@ class ListePiece(QWidget):
 
         # Groupe 1
         ribbon_toolbar.addAction(self.act_new)
+        ribbon_toolbar.addAction(self.act_validate)
+        ribbon_toolbar.addAction(self.act_transform)
         ribbon_toolbar.addAction(self.act_edit)
         ribbon_toolbar.addAction(self.act_delete)
         ribbon_toolbar.addSeparator()

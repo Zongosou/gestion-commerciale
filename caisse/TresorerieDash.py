@@ -1,10 +1,10 @@
 from datetime import datetime
 import os
-from PySide6.QtWidgets import (QWidget,QMessageBox, QVBoxLayout, QLabel, QTableWidget,QHeaderView, 
+from PySide6.QtWidgets import (QToolBar, QWidget,QMessageBox, QVBoxLayout, QLabel, QTableWidget,QHeaderView, 
                                QTableWidgetItem,QHBoxLayout, QDateEdit, QComboBox,
                                  QPushButton)
-from PySide6.QtCore import QDate,Qt
-from PySide6.QtGui import QIcon 
+from PySide6.QtCore import QDate, QSize,Qt
+from PySide6.QtGui import QAction, QIcon 
 from caisse.tresorerie_repository import TresorerieRepository
 from caisse.tresorie_sercive import RapportManager, TresorerieService
 from compta.ecriture import NewTresorerieOp
@@ -42,14 +42,13 @@ class SuiviTresorerie(QWidget):
             cards_row.addWidget(card, 1)
 
         layout.addLayout(cards_row)
+        self.toolbar_actions = self.create_toolbar_actions()
+        self.toolbar_actions.setIconSize(QSize(24, 24))
+        self.toolbar_actions.setMovable(False)
+        layout.addWidget(self.toolbar_actions)
         # --- Filtres ---
         filter_layout = QHBoxLayout()
-        self.btn_ajout = QPushButton("Ajouter Opération")
-        self.btn_ajout.setIcon(QIcon(":/icon/caisse-enregistreuse.png"))
-        self.btn_ajout.setToolTip("Ajouter une nouvelle opération de trésorerie")
-        self.btn_ajout.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_ajout.setObjectName("PrimaryButton")
-        self.btn_ajout.clicked.connect(self.add_operation)
+        
         self.date_from = QDateEdit()
         self.date_from.setCalendarPopup(True)
         self.date_from.setDisplayFormat("yyyy-MM-dd")
@@ -69,7 +68,7 @@ class SuiviTresorerie(QWidget):
         self.btn_apply.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_apply.setObjectName("PrimaryButton")
         self.btn_apply.clicked.connect(self.load_filtres)
-        filter_layout.addWidget(self.btn_ajout)
+        
         filter_layout.addWidget(QLabel("Du:"))
         filter_layout.addWidget(self.date_from)
         filter_layout.addWidget(QLabel("Au:"))
@@ -78,11 +77,13 @@ class SuiviTresorerie(QWidget):
         filter_layout.addWidget(self.compte_combo)
         filter_layout.addWidget(self.btn_apply)
         layout.addLayout(filter_layout)
+
         # --- Tableau ---
         self.table = QTableWidget()
+        self.table.setSortingEnabled(True)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
@@ -90,103 +91,61 @@ class SuiviTresorerie(QWidget):
         self.label_total = QLabel()
         self.label_total.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
         layout.addWidget(self.label_total)
-        export_layout = QHBoxLayout()
         
-        self.btn_export_pdf = QPushButton("Imprimer")
-        self.btn_export_pdf.setIcon(QIcon.fromTheme("printer"))
-        self.btn_export_pdf.setToolTip("Imprimer le rapport de trésorerie")
-        self.btn_export_pdf.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_export_pdf.setObjectName("PrimaryButton")
-        self.btn_export_pdf.clicked.connect(self.imprimer_pdf)
-
-        self.refresh_button = QPushButton("Actualiser")
-        self.refresh_button.setIcon(QIcon.fromTheme("view-refresh"))
-        self.refresh_button.setToolTip("Rafraîchir les données")
-        self.refresh_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.refresh_button.setObjectName("IconButton")
-
-        self.btn_resume = QPushButton("Résumé Trésorerie")
-        self.btn_export_pdf.setIcon(QIcon.fromTheme("view-statistics"))
-        self.btn_resume.setToolTip("Voir le résumé de la trésorerie")
-        self.btn_resume.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_resume.setObjectName("IconButton")
-        self.btn_resume.clicked.connect(self._tab_tresorerie)
-        self.refresh_button.clicked.connect(self.refresh)
         
-
-        export_layout.addWidget(self.refresh_button)
-        export_layout.addWidget(self.btn_export_pdf)
-        export_layout.addWidget(self.btn_resume)
-        layout.addLayout(export_layout)
         # Chargement initial
         self.refresh()
+    
+    def create_toolbar_actions(self):
+        toolbar = QToolBar("Actions Trésorerie", self)
+        # toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+
+        act_ajout = QAction(QIcon(),"Ajouter",self)
+        act_ajout.triggered.connect(self.add_operation)
+
+        act_refresh = QAction(QIcon(), "Actualiser", self)
+        act_refresh.triggered.connect(self.refresh)
+
+        act_print = QAction(QIcon(), "Imprimer", self)
+        act_print.triggered.connect(self.imprimer_pdf)
+
+        act_resume = QAction(QIcon(), "Résumé", self)
+        act_resume.triggered.connect(self._tab_tresorerie)
+
+        toolbar.addAction(act_ajout)
+        toolbar.addSeparator()
+        toolbar.addAction(act_print)
+        toolbar.addSeparator()
+        toolbar.addAction(act_resume)
+        toolbar.addSeparator()
+        toolbar.addAction(act_refresh)
+
+        return toolbar
 
     def _update_summary_cards(self, entre, sortis, final):
         # Update labels inside cards
-        self.card_total.findChild(QLabel, "SummaryValue").setText(str(entre))
-        self.card_alerts.findChild(QLabel, "SummaryValue").setText(str(sortis))
+        self.card_total.findChild(QLabel, "SummaryValue").setText(f"{self.cal.separateur_milieur(entre)} {self.devise}")
+        self.card_alerts.findChild(QLabel, "SummaryValue").setText(f"{self.cal.separateur_milieur(sortis)} {self.devise}")
         self.card_value.findChild(QLabel, "SummaryValue").setText(f"{self.cal.separateur_milieur(final)} {self.devise}")
 
 
-    def load_filtres(self):
-        """Recharge le tableau en fonction des filtres"""
-        date_from = self.date_from.date().toString("yyyy-MM-dd")
-        date_to = self.date_to.date().toString("yyyy-MM-dd")
-        compte_filter = self.compte_combo.currentData()
-        rows = self.repo.get_filtered(date_from=date_from,date_to=date_to,compte=compte_filter)
-        # Remplissage tableau + calcul des totaux
+    
+    def _load_data(self, rows):
         self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["Date", "Libellé", "Type", "Montant", "Compte", "Solde Cumulé"])
-        self.table.setRowCount(0)
-        solde = 0.0
-        total_entrees = 0.0
-        total_sorties = 0.0
-        for row in rows:
-            date, libelle, type_op, montant, compte = row
-            montant = float(montant)
-            if type_op == "ENTREE":
-                solde += montant
-                total_entrees += montant
-            else:
-                solde -= montant
-                total_sorties += montant
-            r = self.table.rowCount()
-            self.table.insertRow(r)
-            self.table.setItem(r, 0, QTableWidgetItem(date))
-            self.table.setItem(r, 1, QTableWidgetItem(libelle))
-            self.table.setItem(r, 2, QTableWidgetItem(type_op))
-            self.table.setItem(r, 3, QTableWidgetItem(f"{self.cal.separateur_milieur(montant)} {self.devise}"))
-            self.table.setItem(r, 4, QTableWidgetItem(compte))
-           
-            self.table.setItem(r, 5, QTableWidgetItem(f"{self.cal.separateur_milieur(solde)} {self.devise}"))
-        self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        # --- Mise à jour du résumé ---
-        self._update_summary_cards(
-            entre=total_entrees,
-            sortis=total_sorties,
-            final=solde
+        self.table.setHorizontalHeaderLabels(
+            ["Date", "Type", "Libellé", "Montant", "Compte", "Solde Cumulé"]
         )
-        
-    def refresh(self):        
-        """Recharge le tableau en fonction des filtres"""
-        rows = self.manager.recharger_tresorie()
-        # Remplissage tableau + calcul des totaux
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["Date", "Type", "Libellé", "Montant", "Compte", "Solde Cumulé"])
         self.table.setRowCount(0)
+
         solde = 0.0
         total_entrees = 0.0
         total_sorties = 0.0
-        for row in rows:
-            date, type_op, libelle, montant, compte = row
+
+        for row_data in rows:
+            date, type_op, libelle, montant, compte = row_data
             montant = float(montant)
             type_op = type_op.strip().upper()
-            
+
             if type_op == "ENTREE":
                 solde += montant
                 total_entrees += montant
@@ -196,31 +155,51 @@ class SuiviTresorerie(QWidget):
 
             r = self.table.rowCount()
             self.table.insertRow(r)
+
             self.table.setItem(r, 0, QTableWidgetItem(date))
             self.table.setItem(r, 1, QTableWidgetItem(type_op))
             self.table.setItem(r, 2, QTableWidgetItem(libelle))
-            self.table.setItem(r, 3, QTableWidgetItem(f"{self.cal.separateur_milieur(montant)} {self.devise}"))
+
+            # Montant tri numérique réel
+            montant_item = QTableWidgetItem()
+            montant_item.setData(Qt.ItemDataRole.DisplayRole, montant)
+            montant_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+            self.table.setItem(r, 3, montant_item)
+
             self.table.setItem(r, 4, QTableWidgetItem(compte))
-            # solde_ = f"{solde:,.2f}".replace(","," ").replace(".",",")
-            self.table.setItem(r, 5, QTableWidgetItem(f"{self.cal.separateur_milieur(solde)} {self.devise}"))
-        self.table.resizeColumnsToContents()
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setAlternatingRowColors(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        # --- Mise à jour du résumé ---
-        
-        self._update_summary_cards(
-            entre=total_entrees,
-            sortis=total_sorties,
-            final=solde
+
+            solde_item = QTableWidgetItem()
+            solde_item.setData(Qt.ItemDataRole.DisplayRole, solde)
+            solde_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
+            self.table.setItem(r, 5, solde_item)
+
+            # 🎨 Couleurs professionnelles
+            if type_op == "ENTREE":
+                self.table.item(r, 1).setForeground(Qt.GlobalColor.darkGreen)
+            else:
+                self.table.item(r, 1).setForeground(Qt.GlobalColor.red)
+
+            if solde < 0:
+                self.table.item(r, 5).setForeground(Qt.GlobalColor.red)
+
+        self._update_summary_cards(total_entrees, total_sorties, solde)
+    
+    def load_filtres(self):
+        rows = self.repo.get_filtered(
+            self.date_from.date().toString("yyyy-MM-dd"),
+            self.date_to.date().toString("yyyy-MM-dd"),
+            self.compte_combo.currentData()
         )
-   
+        self._load_data(rows)
+        
+    def refresh(self):
+        rows = self.manager.recharger_tresorie()
+        self._load_data(rows)
    
     def add_operation(self):
-        self.op = NewTresorerieOp(self.db_path,self.user)
-        self.op.exec()   
+        op = NewTresorerieOp(self.db_path, self.user)
+        if op.exec():
+            self.refresh()  
 
     def _tab_tresorerie(self):
         resume = self.manager.resume_tresorerie()
@@ -237,9 +216,9 @@ class SuiviTresorerie(QWidget):
             self.table.setItem(row, 0, QTableWidgetItem(str(compte)))
             self.table.setItem(row, 1, QTableWidgetItem(f"{self.cal.separateur_milieur(entree)}"))
             self.table.setItem(row, 2, QTableWidgetItem(f"{self.cal.separateur_milieur(sortie)}"))
-            self.table.setItem(row, 3, QTableWidgetItem(f"{self.cal.separateur_milieur(solde)}"))
-            item = QTableWidgetItem(f"{self.cal.separateur_milieur(solde)}")
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            item = QTableWidgetItem()
+            item.setData(Qt.ItemDataRole.DisplayRole, solde)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
             self.table.setItem(row, 3, item)
     
     def imprimer_pdf(self):

@@ -1,9 +1,9 @@
 from PySide6.QtWidgets import (
-     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+     QHeaderView, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTableWidget, QTableWidgetItem, QFrame, QDialog,
     QMessageBox,QToolBar,QSizePolicy,QLineEdit
 )
-from PySide6.QtGui import QIcon,QAction
+from PySide6.QtGui import QColor, QIcon,QAction
 from PySide6.QtCore import Qt 
 from  fonction.methode import cal
 from stock.add_product_dialog import AddProductDialog
@@ -78,10 +78,12 @@ class StockApp(QWidget):
         self.card_total = SummaryCard("Nombre total de produits", "0", accent="#2D7EF7")
         self.card_alerts = SummaryCard("Alertes stock faible", "0", accent="#F59E0B")
         self.card_value = SummaryCard("Valeur totale du stock", "0.0", accent="#10B981")
+        self.card_marge = SummaryCard("Marge potentielle", "0.0", accent="#F97316")
 
         cards_row.addWidget(self.card_total)
         cards_row.addWidget(self.card_alerts)
         cards_row.addWidget(self.card_value)
+        cards_row.addWidget(self.card_marge)
         layout_.addLayout(cards_row)
         # Table
         table_container = QFrame()
@@ -108,6 +110,9 @@ class StockApp(QWidget):
         self.table.setSortingEnabled(True)
         self.table.setShowGrid(True)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.itemDoubleClicked.connect(lambda _: self.open_edit_product_dialog())
         box_btn_h = QHBoxLayout()
         self.btn_hist_achat = QPushButton("Historique des Entrés.")
         self.btn_hist_achat.setIcon(QIcon(':/icon/historique.png'))
@@ -128,8 +133,9 @@ class StockApp(QWidget):
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(container)
         
-        self._populate_table()
-        self._update_summary_cards(self.dataSource.get_all_products())
+        data = self.dataSource.get_all_products()
+        self._populate_table(data)
+        self._update_summary_cards(data)
 
     def open_supplier_payment(self):
         dialog = SupplierPaymentDialog(self.db_connection, self)
@@ -182,38 +188,47 @@ class StockApp(QWidget):
         return toolbar
     # Data display
     # ---------------------------
-    def _populate_table(self):
+   
+    def _populate_table(self, data):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        data = self.dataSource.get_all_products()
-        if data is False:
-            QMessageBox.critical(self, "Erreur", "Impossible de récupérer les données depuis la base de données.")
-            return
+
         for item in data:
             row = self.table.rowCount()
             self.table.insertRow(row)
-           
+
+            # Reference
             ref = QTableWidgetItem(str(item["ref"]))
+
+            # Nom
             nom_item = QTableWidgetItem(item["produit"])
+
+            # Catégorie
             cat_item = QTableWidgetItem(item["categorie"])
 
-            qty_item = QTableWidgetItem(str(item["qty"]))
+            # Quantité (tri numérique réel)
+            qty_item = QTableWidgetItem()
+            qty_item.setData(Qt.ItemDataRole.DisplayRole, item["qty"])
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-            prix_item = QTableWidgetItem(self.cal.separateur_milieur(item["price"]))
+            # Prix achat
+            prix_item = QTableWidgetItem()
+            prix_item.setData(Qt.ItemDataRole.DisplayRole, float(item["price"]))
             prix_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-            prix_item_vent = QTableWidgetItem(self.cal.separateur_milieur(item["price_vent"]))
+            # Prix vente
+            prix_item_vent = QTableWidgetItem()
+            prix_item_vent.setData(Qt.ItemDataRole.DisplayRole, float(item["price_vent"]))
             prix_item_vent.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
+            # Statut
             statut_text = "OK" if item["qty"] >= item["alert_min"] else "Faible"
             statut_item = QTableWidgetItem(statut_text)
 
-            # Color coding
             if statut_text == "Faible":
                 statut_item.setForeground(Qt.GlobalColor.red)
-            else:
-                statut_item.setForeground(Qt.GlobalColor.darkGreen)
+
+            # Insert
             self.table.setItem(row, 0, ref)
             self.table.setItem(row, 1, nom_item)
             self.table.setItem(row, 2, cat_item)
@@ -222,24 +237,40 @@ class StockApp(QWidget):
             self.table.setItem(row, 5, prix_item_vent)
             self.table.setItem(row, 6, statut_item)
 
+            # Highlight ligne critique
+            if statut_text == "Faible":
+                for col in range(7):
+                    self.table.item(row, col).setBackground(QColor("#FFE5E5"))
+
+        self.table.setSortingEnabled(True)
+
     def _update_summary_cards(self, data):
         total_products = len(data)
         low_stock_alerts = sum(1 for p in data if p["qty"] < p["alert_min"])
         total_value = sum(p["qty"] * p["price"] for p in data)
+        total_margin = sum(p["qty"] * (p["price_vent"] - p["price"]) for p in data)
 
-        # Update labels inside cards
         self.card_total.findChild(QLabel, "SummaryValue").setText(str(total_products))
         self.card_alerts.findChild(QLabel, "SummaryValue").setText(str(low_stock_alerts))
-        self.card_value.findChild(QLabel, "SummaryValue").setText(self.cal.separateur_milieur(total_value))
+        self.card_value.findChild(QLabel, "SummaryValue").setText(
+            self.cal.separateur_milieur(total_value)
+        )
+        self.card_marge.findChild(QLabel, "SummaryValue").setText(
+            self.cal.separateur_milieur(total_margin)
+    )
 
     def open_inventory(self):
         self.dialog = InventoryDialog(self.db_connection, self.user, parent=self)
         self.dialog.exec()
 
     def _refresh(self):
-        self._populate_table()
-        self._update_summary_cards(self.dataSource.get_all_products())
+        data = self.dataSource.get_all_products()
+        if not data:
+            return
 
+        self._populate_table(data)
+        self._update_summary_cards(data)
+        self.setWindowTitle(f"Gestion Stock - {len(data)} produits")
     # ---------------------------
     # Event Handlers    
     def open_add_product_dialog(self):
@@ -247,17 +278,18 @@ class StockApp(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._refresh()
     
-    def open_edit_product_dialog(self, product_id):
+    def open_edit_product_dialog(self):
         row = self.table.currentRow()
         if row == -1:
             QMessageBox.warning(self, "Erreur", "Sélectionnez une ligne avant de continuer 😎")
             return
+
         product_id = self.table.item(row, 0)
         if product_id is None:
-            QMessageBox.warning(self, "Erreur", "ID de produit introuvable 😭")
             return
-        product_id = str(product_id.text())
-        dialog = EditProductDialog(self.db_connection,product_id, parent=self)
+
+        dialog = EditProductDialog(self.db_connection, product_id.text(), parent=self)
+
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._refresh()
     
