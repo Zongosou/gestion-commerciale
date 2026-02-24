@@ -537,7 +537,7 @@ class DataManage(DBServiceMixin):
         return [dict(zip(cols, r)) for r in rows]
 
 # Effectuer un paiement sur une facture fournisseur
-    def pay_supplier_invoice(self, facture, montant_paye, user="SYSTEM"):
+    def pay_supplier_invoice(self, facture, montant_paye, user):
         conn = self.get_connection()
         if conn is None:
             return False
@@ -558,9 +558,9 @@ class DataManage(DBServiceMixin):
                 return False
 
             montant_total, deja_paye = row
-            nouveau_paye = deja_paye + montant_paye
+            nouveau_paye = float(deja_paye) + float(montant_paye)
 
-            if nouveau_paye > montant_total:
+            if nouveau_paye > float(montant_total):
                 return "DEPASSEMENT"
 
             # Update facture

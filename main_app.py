@@ -8,6 +8,7 @@ QApplication, QDialog, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 )
 
 from PySide6.QtGui import QIcon
+QIcon.setThemeName("breeze")
 from caisse.TresorerieDash import SuiviTresorerie
 from fonction.methode import cal
 from users.login_window import LoginWindow

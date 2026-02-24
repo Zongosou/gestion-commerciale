@@ -17,7 +17,8 @@ class AchatModule(QDialog):
 
         self.setWindowTitle("Gestion des Achats et Réception de Stock")
         self.setWindowIcon(QIcon(":/icon/icone.png"))
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(700, 600)
+        self.setMaximumSize(700,600)
 
         self.db = db_manager
         self.cal = cal()
@@ -82,7 +83,8 @@ class AchatModule(QDialog):
         lines_layout.addWidget(self.table, 1)
 
         add_btn = QPushButton("Ajouter un Produit")
-        add_btn.setIcon(QIcon(":/icon/plus.png"))
+        add_btn.setObjectName("IconButton")
+        add_btn.setIcon(QIcon(":/icon/ajouter.png"))
         add_btn.clicked.connect(self.add_product_line)
 
         lines_layout.addWidget(add_btn, 0, Qt.AlignmentFlag.AlignLeft)
@@ -98,12 +100,12 @@ class AchatModule(QDialog):
         self.total_label.setStyleSheet("font-weight:bold;")
         self.total_input = QLabel("0,00")
         self.total_input.setStyleSheet("font-weight:bold;")
-        self.input_payed = QLineEdit()
-        self.input_payed.setValidator(QDoubleValidator(0, 999999999, 2))
-        self.input_payed.setPlaceholderText("Montant payé")
-
+        self.input_payed = QDoubleSpinBox()
+        self.input_payed.setMaximum(999999999)
+        
         save_btn = QPushButton("Valider et Mettre à Jour le Stock")
-        save_btn.setIcon(QIcon(":/icon/save.png"))
+        save_btn.setObjectName("IconButton")
+        save_btn.setIcon(QIcon(":icon/liste-de-courses.png"))
         save_btn.clicked.connect(self.save_and_update_stock)
 
         action_layout.addWidget(self.total_label)
@@ -204,11 +206,11 @@ class AchatModule(QDialog):
             self.table.item(r, 3).setText(f"{total:,.2f}".replace(".", ","))
 
         self.total_input.setText(
-            f"{total_general:,.2f}".replace(".", ",")
+            f"{total_general}"
         )
     def get_status(self):
         total = float(self.total_input.text())
-        payed = float(self.input_payed.text())
+        payed = self.input_payed.value()
         rested = total - payed
 
         if rested == 0:
@@ -241,11 +243,12 @@ class AchatModule(QDialog):
 
         # Sécurisation montant payé
         try:
-            montant_paye = float(self.input_payed.text())
+            montant_paye = self.input_payed.value()
+            print(montant_paye)
         except:
             montant_paye = 0.0
         
-        montant_total = float(self.total_input.text().replace(",", "."))
+        montant_total = float(self.total_input.text())
 
         conn = self.cal.connect_to_db(self.db)
         if not conn:

@@ -7,13 +7,13 @@ from PySide6.QtCore import Qt
 from stock.stock_db import DataManage
 
 class SupplierPaymentDialog(QDialog):
-    def __init__(self, db, parent=None):
+    def __init__(self, db, user,parent=None):
         super().__init__(parent)
         self.setWindowTitle("Paiement Fournisseur")
         self.resize(700, 500)
 
         self.data = DataManage(db)
-
+        self.user = user
         layout = QVBoxLayout(self)
 
         self.table = QTableWidget()
@@ -27,7 +27,10 @@ class SupplierPaymentDialog(QDialog):
         self.input_amount.setPlaceholderText("Montant à payer")
         layout.addWidget(self.input_amount)
 
-        pay_btn = QPushButton("Payer")
+        pay_btn = QPushButton("Valider")
+        pay_btn.setObjectName("IconButton")
+        pay_btn.setToolTip("Valider le paiement")
+        pay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         pay_btn.clicked.connect(self.pay_invoice)
         layout.addWidget(pay_btn)
 
@@ -53,12 +56,12 @@ class SupplierPaymentDialog(QDialog):
         facture = self.table.item(selected, 0).text()
 
         try:
-            montant = float(self.input_amount.text())
+            montant = self.input_amount.text()
         except:
             QMessageBox.warning(self, "Erreur", "Montant invalide.")
             return
 
-        result = self.data.pay_supplier_invoice(facture, montant, "ADMIN")
+        result = self.data.pay_supplier_invoice(facture, montant, self.user)
 
         if result == "OK":
             QMessageBox.information(self, "Succès", "Paiement enregistré.")

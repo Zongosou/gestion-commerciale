@@ -123,7 +123,10 @@ class StockApp(QWidget):
 
         box_btn_h.addWidget(self.btn_hist_achat)
         pay_btn = QPushButton("Paiement Fournisseur")
+        pay_btn.setObjectName("IconButton")
+        pay_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         pay_btn.clicked.connect(self.open_supplier_payment)
+        pay_btn.setToolTip("Effectuer le paiement d'un fournisseur")
         box_btn_h.addWidget(pay_btn)
 
         table_layout.addWidget(self.table)
@@ -138,12 +141,12 @@ class StockApp(QWidget):
         self._update_summary_cards(data)
 
     def open_supplier_payment(self):
-        dialog = SupplierPaymentDialog(self.db_connection, self)
+        dialog = SupplierPaymentDialog(self.db_connection,self.user, self)
         dialog.exec()
 
 
     def add_facture_achat(self):
-        dialog = AchatModule(self.db_connection)
+        dialog = AchatModule(self.db_connection,parent=self)
         dialog.exec()
 
     def open_hist_achat(self):
@@ -152,24 +155,24 @@ class StockApp(QWidget):
 
     def create_actions(self):
       
-        self.act_validate = QAction(QIcon(), "Ajouter un article", self)
+        self.act_validate = QAction(QIcon(":icon/ajouter.png"), "Ajouter un article", self)
         self.act_validate.triggered.connect(self.open_add_product_dialog)
 
-        self.act_transform = QAction(QIcon(), "Modifier", self)
+        self.act_transform = QAction(QIcon(":icon/updated.png"), "Modifier", self)
         self.act_transform.triggered.connect(self.open_edit_product_dialog)
 
-        self.act_pay = QAction(QIcon(), "Supprimer", self)
+        self.act_pay = QAction(QIcon(":icon/delete.png"), "Supprimer", self)
         self.act_pay.triggered.connect(self.dele_product)
 
-        self.act_print = QAction(QIcon(), "Inventaire", self)
+        self.act_print = QAction(QIcon(":icon/inventaire.png"), "Inventaire", self)
         self.act_print.setShortcut("Ctrl+P")
         self.act_print.triggered.connect(self.open_inventory)
 
-        self.act_delete = QAction(QIcon(), "Ajouter une entrée", self)
+        self.act_delete = QAction(QIcon(":icon/chariot-de-chariot.png"), "Ajouter une entrée", self)
         
         self.act_delete.triggered.connect((self.add_facture_achat))
 
-        self.act_refresh = QAction(QIcon(), "Actualiser", self)
+        self.act_refresh = QAction(QIcon(":icon/refresh.png"), "Actualiser", self)
         self.act_refresh.setShortcut("F5")
         self.act_refresh.triggered.connect(self._refresh)
 

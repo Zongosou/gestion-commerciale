@@ -8,7 +8,7 @@ import pandas as pd
 from PySide6.QtCore import QSize, Qt, QDate
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QFileDialog, QTableView, QWidget, QVBoxLayout, QHBoxLayout,
+    QFileDialog, QStyle, QTableView, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel,
     QComboBox, QDateEdit, QTableWidget,
     QTableWidgetItem,QToolBar,
@@ -164,41 +164,41 @@ class ListePiece(QWidget):
     # --- ACTIONS ---
     # ===============================
     def create_actions(self):
-        self.act_add = QAction(QIcon(), "Nouvelle Pièce", self,toolTip="Créer une nouvelle pièce")
+        self.act_add = QAction(QIcon(":icon/ajouter.png"), "Nouvelle Pièce", self,toolTip="Créer une nouvelle pièce")
         self.act_add.setShortcut("Ctrl+N")
         self.act_add.triggered.connect(self.open_window)
 
-        self.act_validate = QAction(QIcon(), "Valider une Pièce", self,toolTip="Valider la pièce sélectionnée")
+        self.act_validate = QAction(QIcon(":icon/update.png"), "Valider une Pièce", self,toolTip="Valider la pièce sélectionnée")
         self.act_validate.triggered.connect(self.open_liste_valide)
 
-        self.act_transform = QAction(QIcon(), "Transformer", self,toolTip="Transformer la pièce sélectionnée en d'autre pièce")
+        self.act_transform = QAction(QIcon(":icon/subscription-model.png"), "Transformer", self,toolTip="Transformer la pièce sélectionnée en d'autre pièce")
         self.act_transform.triggered.connect(self.open_conver)
 
-        self.act_pay = QAction(QIcon(), "Paiment Facture", self,toolTip="Enregistrer un paiement pour la facture sélectionnée")
+        self.act_pay = QAction(QIcon(":icon/caisse-enregistreuse.png"), "Paiment Facture", self,toolTip="Enregistrer un paiement pour la facture sélectionnée")
         self.act_pay.triggered.connect(self.paiement)
 
-        self.act_print = QAction(QIcon(), "Imprimer", self,toolTip="Imprimer la pièce sélectionnée")
+        self.act_print = QAction(QIcon(":icon/telecharger-le-pdf.png"), "Exporter en PDF", self,toolTip="Exporter la pièce sélectionnée en PDF")
         self.act_print.setShortcut("Ctrl+P")
         self.act_print.triggered.connect(self.facture_generate)
-        self.act_export = QAction("Exporter Excel", self)
+        self.act_export = QAction(QIcon(":icon/xls.png"), "Exporter Excel", self,toolTip="Exporter la liste des pièces affichées vers Excel")
         self.act_export.triggered.connect(self.export_excel)
         
 
-        self.act_delete = QAction(QIcon(), "Supprimer", self,toolTip="Supprimer la pièce sélectionnée")
+        self.act_delete = QAction(QIcon(":icon/delete.png"), "Supprimer", self,toolTip="Supprimer la pièce sélectionnée")
         self.act_delete.setShortcut("Del")
         self.act_delete.triggered.connect(self.delete_fact_vent)
 
-        self.act_refresh = QAction(QIcon(), "Actualiser", self,toolTip="Rafraîchir la liste des pièces")
+        self.act_refresh = QAction(QIcon(":icon/refresh.png"), "Actualiser", self,toolTip="Rafraîchir la liste des pièces")
         self.act_refresh.setShortcut("F5")
         self.act_refresh.triggered.connect(self.refresh)
 
-        self.act_avoir = QAction(QIcon(), "Créer un Avoir", self,toolTip="Créer un avoir à partir de la facture sélectionnée")
+        self.act_avoir = QAction(QIcon(":icon/238.png"), "Créer un Avoir", self,toolTip="Créer un avoir à partir de la facture sélectionnée")
         self.act_avoir.triggered.connect(self.creer_avoir_depuis_facture_a)
 
-        self.act_prev = QAction(QIcon(), "Précédent", self, toolTip="Page précédente")
+        self.act_prev = QAction(QIcon.fromTheme("go-previous", self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)), "Précédent", self, toolTip="Page précédente")
         self.act_prev.triggered.connect(lambda: self.change_page(-1))
 
-        self.act_next = QAction(QIcon(), "Suivant", self, toolTip="Page suivante")
+        self.act_next = QAction(QIcon.fromTheme("go-next",), "Suivant", self, toolTip="Page suivante")
         self.act_next.triggered.connect(lambda: self.change_page(1))
 
         # Aliases used in the ribbon toolbar labels.
@@ -244,6 +244,7 @@ class ListePiece(QWidget):
         
         ribbon_toolbar = QToolBar("Actions", self)
         ribbon_toolbar.setMovable(False)
+        ribbon_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
 
         ribbon_toolbar.setIconSize(QSize(24, 24))
         self.ribbon_toolbar = ribbon_toolbar

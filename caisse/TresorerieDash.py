@@ -98,18 +98,18 @@ class SuiviTresorerie(QWidget):
     
     def create_toolbar_actions(self):
         toolbar = QToolBar("Actions Trésorerie", self)
-        # toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
 
-        act_ajout = QAction(QIcon(),"Ajouter",self)
+        act_ajout = QAction(QIcon(":icon/ajouter.png"),"Ajouter",self)
         act_ajout.triggered.connect(self.add_operation)
 
-        act_refresh = QAction(QIcon(), "Actualiser", self)
+        act_refresh = QAction(QIcon(":icon/refresh.png"), "Actualiser", self)
         act_refresh.triggered.connect(self.refresh)
 
-        act_print = QAction(QIcon(), "Imprimer", self)
+        act_print = QAction(QIcon(":icon/telecharger-le-pdf.png"), "Exporter en PDF", self)
         act_print.triggered.connect(self.imprimer_pdf)
 
-        act_resume = QAction(QIcon(), "Résumé", self)
+        act_resume = QAction(QIcon(":icon/resume.png"), "Résumé", self)
         act_resume.triggered.connect(self._tab_tresorerie)
 
         toolbar.addAction(act_ajout)
